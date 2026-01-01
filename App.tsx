@@ -71,7 +71,7 @@ const App: React.FC = () => {
     if (!data) return null;
     const model = getModelValues(new Date());
     const oscillator = data.currentPrice > 0 ? Math.log(data.currentPrice / model.weighted) : 0;
-    const deviationPercent = ((data.currentPrice / model.weighted) - 1) * 100;
+    const deviationPercent = ((data.currentPrice / model.weighted) - 1);
     const priceRisk = Math.max(0, Math.min(100, ((oscillator + 0.5) / 1.0) * 100));
     const fngRisk = data.fngValue;
     const mvrvEst = (oscillator * 6.5) + 2.5;
