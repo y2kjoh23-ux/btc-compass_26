@@ -232,7 +232,7 @@ const App: React.FC = () => {
 
         {/* METRICS GRID */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-          <MetricCard label="OSCILLATOR (이격률)" value={`${stats.deviationPercent > 0 ? '+' : ''}${stats.deviationPercent.toFixed(1)}%`} subValue="적정가 대비 괴리율" />
+          <MetricCard label="OSCILLATOR (이격률)" value={`${stats.deviationPercent > 0 ? '+' : ''}${stats.deviationPercent.toFixed(1)}`} subValue="적정가 대비 괴리율" />
           <MetricCard label="SENTIMENT (심리지수)" value={data.fngValue} subValue="Fear & Greed Index" />
           <MetricCard label="MVRV Z-SCORE (온체인)" value={stats.mvrvEst.toFixed(2)} subValue="실현 가치 기반 고점 탐지" />
         </div>
