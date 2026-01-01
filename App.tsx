@@ -10,7 +10,6 @@ import {
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Area, ComposedChart, Line
 } from 'recharts';
 
-// 툴팁 마커 색상 정의
 const COLORS = {
   upper: '#fb7185', // rose-400
   fair: '#fbbf24',  // amber-400
@@ -70,62 +69,39 @@ const App: React.FC = () => {
   const stats = useMemo(() => {
     if (!data) return null;
     const model = getModelValues(new Date());
-    
     const oscillator = data.currentPrice > 0 ? Math.log(data.currentPrice / model.weighted) : 0;
     const deviationPercent = ((data.currentPrice / model.weighted) - 1) * 100;
     const priceRisk = Math.max(0, Math.min(100, ((oscillator + 0.5) / 1.0) * 100));
     const fngRisk = data.fngValue;
     const mvrvEst = (oscillator * 6.5) + 2.5;
     const mvrvRisk = Math.max(0, Math.min(100, (mvrvEst / 6) * 100));
-
     const riskPercent = (priceRisk * 0.7) + (fngRisk * 0.15) + (mvrvRisk * 0.15);
 
     let status = MarketStatus.STABLE;
     if (riskPercent < 35) status = MarketStatus.ACCUMULATE;
     else if (riskPercent > 65) status = MarketStatus.SELL;
 
-    return { 
-      model, oscillator, deviationPercent, mvrvEst, status, riskPercent
-    };
+    return { model, oscillator, deviationPercent, mvrvEst, status, riskPercent };
   }, [data]);
 
   const chartData = useMemo(() => {
     if (!data || !data.history) return [];
-    
-    const historyPoints = data.history
-      .filter(h => new Date(h.date) >= CHART_START_DATE)
-      .map(h => {
-        const d = new Date(h.date);
-        const m = getModelValues(d);
-        return { 
-          timestamp: d.getTime(), 
-          price: h.price, 
-          fair: m.weighted, 
-          upper: m.upper, 
-          lower: m.lower 
-        };
-      });
-
+    const historyPoints = data.history.filter(h => new Date(h.date) >= CHART_START_DATE).map(h => {
+      const d = new Date(h.date);
+      const m = getModelValues(d);
+      return { timestamp: d.getTime(), price: h.price, fair: m.weighted, upper: m.upper, lower: m.lower };
+    });
     if (historyPoints.length === 0) return [];
-
     const lastTimestamp = historyPoints[historyPoints.length - 1].timestamp;
     const predictions = [];
     const endDate = new Date('2026-12-31').getTime();
-    
     let currentTs = lastTimestamp + (7 * 24 * 60 * 60 * 1000);
     while (currentTs <= endDate) {
       const d = new Date(currentTs);
       const m = getModelValues(d);
-      predictions.push({
-        timestamp: currentTs,
-        price: null,
-        fair: m.weighted,
-        upper: m.upper,
-        lower: m.lower
-      });
+      predictions.push({ timestamp: currentTs, price: null, fair: m.weighted, upper: m.upper, lower: m.lower });
       currentTs += (7 * 24 * 60 * 60 * 1000);
     }
-
     return [...historyPoints, ...predictions];
   }, [data]);
 
@@ -133,32 +109,18 @@ const App: React.FC = () => {
     if (!data) return [];
     const targets = [3, 5, 7, 10, 15, 20];
     const now = new Date();
-    
     return targets.map(years => {
       const targetDate = new Date();
       targetDate.setFullYear(now.getFullYear() + years);
-      
       const m = getModelValues(targetDate);
       const days = getDaysSinceGenesis(targetDate);
       const sigma = getDynamicSigma(days);
-      
       const cagr = (Math.pow(m.weighted / data.currentPrice, 1 / years) - 1) * 100;
-      
       let status = "Early Mature";
       if (sigma < 0.46) status = "Deep Converged";
       else if (sigma < 0.48) status = "Stable Mature";
       else if (sigma < 0.495) status = "Decay Active";
-
-      return {
-        years,
-        dateLabel: targetDate.getFullYear(),
-        fair: m.weighted,
-        upper: m.upper,
-        lower: m.lower,
-        cagr,
-        sigma,
-        status
-      };
+      return { years, dateLabel: targetDate.getFullYear(), fair: m.weighted, upper: m.upper, lower: m.lower, cagr, sigma, status };
     });
   }, [data]);
 
@@ -169,7 +131,7 @@ const App: React.FC = () => {
           <div className="absolute inset-0 border-2 border-amber-500/10 rounded-full"></div>
           <div className="absolute inset-0 border-2 border-amber-500 border-t-transparent rounded-full animate-spin"></div>
         </div>
-        <p className="font-black tracking-[0.3em] text-[11px] text-amber-500 uppercase italic">퀀트 모델 및 변동성 감쇄 로직 동기화 중...</p>
+        <p className="font-black tracking-[0.3em] text-[11px] text-amber-500 uppercase italic">퀀트 엔진 동기화 중...</p>
       </div>
     );
   }
@@ -178,8 +140,8 @@ const App: React.FC = () => {
 
   const getStatusStyle = () => {
     if (stats.status === MarketStatus.ACCUMULATE) return { accent: 'text-emerald-400', bg: 'from-emerald-950/40', border: 'border-emerald-500/30', label: '적극적 매수 권장 구간' };
-    if (stats.status === MarketStatus.SELL) return { accent: 'text-rose-400', bg: 'from-rose-950/40', border: 'border-rose-500/30', label: '위험 관리 및 수익 실현' };
-    return { accent: 'text-amber-400', bg: 'from-slate-900/60', border: 'border-slate-800', label: '안정 지향적 중립 구간' };
+    if (stats.status === MarketStatus.SELL) return { accent: 'text-rose-400', bg: 'from-rose-950/40', border: 'border-rose-500/30', label: '수익 확정 및 위험 관리' };
+    return { accent: 'text-amber-400', bg: 'from-slate-900/60', border: 'border-slate-800', label: '관망 및 안정 운용 구간' };
   };
 
   const style = getStatusStyle();
@@ -193,9 +155,7 @@ const App: React.FC = () => {
             <div className="h-6 w-px bg-slate-800 mx-2"></div>
             <span className="px-2.5 py-1 bg-slate-900 text-[10px] font-black text-slate-500 tracking-widest uppercase border border-slate-800 rounded">v8.9 MATURE</span>
           </div>
-          <p className="text-[11px] font-bold tracking-tight text-slate-500 italic">
-            Maturity-Adjusted Volatility Decay Active <span className="mx-2 text-slate-800">//</span> Sync: <span className="text-slate-300 font-black uppercase">{data.lastUpdated}</span>
-          </p>
+          <p className="text-[11px] font-bold tracking-tight text-slate-500 italic">Maturity-Adjusted Volatility Decay Active</p>
         </div>
         <div className="flex items-stretch gap-4 bg-slate-950 p-2 rounded-2xl border border-slate-900 shadow-2xl">
           <div className="px-5 py-3 border-r border-slate-900 text-right">
@@ -203,7 +163,7 @@ const App: React.FC = () => {
             <p className="mono text-white font-black text-base italic">{data.usdKrw.toLocaleString()} KRW</p>
           </div>
           <button onClick={init} className="px-5 group flex items-center justify-center hover:bg-slate-900 transition-all rounded-xl">
-            <svg className="w-5 h-5 text-slate-600 group-hover:text-amber-500 transition-all duration-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
+            <svg className="w-5 h-5 text-slate-600 group-hover:text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
           </button>
         </div>
       </header>
@@ -218,17 +178,15 @@ const App: React.FC = () => {
                    <div className={`w-2 h-2 rounded-full ${style.accent.replace('text', 'bg')} animate-pulse`}></div>
                    <span className="text-[10px] font-black uppercase tracking-widest text-slate-400 font-sans">{style.label}</span>
                 </div>
-                <h2 className="text-7xl md:text-8xl font-black text-white tracking-tighter italic font-sans leading-none">
+                <h2 className="text-3xl md:text-4xl font-black text-white tracking-tighter italic font-sans leading-none">
                   $ {data.currentPrice.toLocaleString()}
                 </h2>
                 <div className="flex items-baseline gap-3 text-slate-400 italic font-sans">
                   <span className="text-2xl font-light">₩ {Math.round(data.currentPrice * data.usdKrw).toLocaleString()}</span>
                 </div>
-
-                {/* 모델 이격가 추가 */}
                 <div className="mt-4 pt-4 border-t border-white/5">
                   <div className="flex items-center gap-3">
-                    <span className="text-[11px] font-black uppercase tracking-widest text-slate-500 font-sans">모델이격가 (적정가격 - 시장가격)</span>
+                    <span className="text-[11px] font-black uppercase tracking-widest text-slate-500 font-sans">이격가 (적정가 - 시장가)</span>
                     <span className={`text-[15px] font-black mono italic ${modelDeviationKrw >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
                       ₩ {Math.round(modelDeviationKrw).toLocaleString()}
                     </span>
@@ -246,23 +204,18 @@ const App: React.FC = () => {
                     RISK: {Math.round(stats.riskPercent)}%
                   </div>
                 </div>
-                
-                <div className="space-y-8">
-                  <div className="space-y-6">
-                    <div className="flex justify-between text-[9px] font-black uppercase tracking-[0.2em] px-1 italic text-slate-500">
-                      <span className="text-emerald-500/80 tracking-widest">Safety Buy</span>
-                      <span className="text-rose-500/80 tracking-widest">Warning Sell</span>
-                    </div>
-                    <div className="relative h-6 bg-slate-900 rounded-full border border-white/5 p-1.5">
-                       <div className="absolute inset-0 rounded-full bg-gradient-to-r from-emerald-500 via-yellow-400 to-rose-500 opacity-20"></div>
-                       <div className="relative w-full h-full">
-                         <div 
-                           className="absolute top-0 w-2.5 h-full bg-white shadow-[0_0_30px_white] transition-all duration-1000 ease-out z-10 rounded-full"
-                           style={{ left: `${stats.riskPercent}%`, transform: 'translateX(-50%)' }}
-                         >
-                           <div className="absolute -top-4 left-1/2 -translate-x-1/2 w-0 h-0 border-l-[6px] border-l-transparent border-r-[6px] border-r-transparent border-t-[10px] border-t-white"></div>
-                         </div>
-                       </div>
+                <div className="space-y-6">
+                  <div className="flex justify-between text-[9px] font-black uppercase tracking-[0.2em] px-1 italic text-slate-500">
+                    <span className="text-emerald-500/80 tracking-widest">Safety Buy</span>
+                    <span className="text-rose-500/80 tracking-widest">Warning Sell</span>
+                  </div>
+                  <div className="relative h-6 bg-slate-900 rounded-full border border-white/5 p-1.5">
+                    <div className="absolute inset-0 rounded-full bg-gradient-to-r from-emerald-500 via-yellow-400 to-rose-500 opacity-20"></div>
+                    <div className="relative w-full h-full">
+                      <div className="absolute top-0 w-2.5 h-full bg-white shadow-[0_0_30px_white] transition-all duration-1000 ease-out z-10 rounded-full"
+                           style={{ left: `${stats.riskPercent}%`, transform: 'translateX(-50%)' }}>
+                        <div className="absolute -top-4 left-1/2 -translate-x-1/2 w-0 h-0 border-l-[6px] border-l-transparent border-r-[6px] border-r-transparent border-t-[10px] border-t-white"></div>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -270,28 +223,35 @@ const App: React.FC = () => {
             </div>
             
             <div className="lg:col-span-7">
-              <div className="bg-white/5 backdrop-blur-md rounded-[2.5rem] border border-white/10 p-10 md:p-14 space-y-10 font-sans h-full flex flex-col justify-center text-left">
-                <div className="flex items-center gap-6 border-b border-white/10 pb-8">
-                  <div className={`text-5xl ${style.accent} font-serif`}>❝</div>
-                  <h3 className="text-2xl font-black text-white tracking-tighter italic">성숙 자산 분석 가이드</h3>
+              <div className="bg-white/5 backdrop-blur-md rounded-[2.5rem] border border-white/10 p-10 md:p-14 space-y-8 font-sans h-full flex flex-col justify-center text-left">
+                <div className="flex items-center gap-6 border-b border-white/10 pb-6">
+                  <div className={`text-4xl ${style.accent} font-serif`}>❝</div>
+                  <h3 className="text-xl font-black text-white tracking-tighter italic">전문가 통합 분석 가이드</h3>
                 </div>
-                
-                <div className="space-y-10">
-                  <div className="space-y-4">
-                    <p className="text-white font-black text-[19px] tracking-tight italic border-l-4 border-amber-500 pl-4 uppercase">Asset Maturity (자산 성숙도 반영)</p>
-                    <p className="text-slate-300 text-[16px] leading-relaxed font-medium">
-                      비트코인의 시가총액이 증가함에 따라 역사적 변동성 계수(Sigma)는 자연스럽게 감소하고 있습니다. 현재 모델은 이 **'변동성 감쇄(Volatility Decay)'**를 반영하여 미래의 고점과 저점 예측 범위를 과거보다 더 보수적으로 좁혔습니다. 이는 기관 자금 유입으로 인한 시장 안정화를 정교하게 포착한 결과입니다.
+                <div className="space-y-6">
+                  <div className="space-y-2">
+                    <p className="text-amber-500 font-black text-[14px] tracking-tight italic uppercase">1. 시장 국면 해설 (초보자용)</p>
+                    <p className="text-slate-300 text-[14px] leading-relaxed">
+                      현재 비트코인은 적정 가치 대비 <span className="text-white font-bold">{Math.abs(stats.deviationPercent).toFixed(1)}% {stats.deviationPercent > 0 ? '고평가' : '저평가'}</span>된 상태입니다. 
+                      심리 지수({data.fngValue})와 온체인 데이터({stats.mvrvEst.toFixed(2)})를 종합할 때, 지금은 {stats.status === MarketStatus.ACCUMULATE ? '역사적인 매수 기회' : stats.status === MarketStatus.SELL ? '일부 수익 실현' : '기존 물량 유지'}가 권장되는 시점입니다.
                     </p>
                   </div>
-                  <div className="space-y-4">
-                    <p className="text-white font-black text-[19px] tracking-tight italic border-l-4 border-amber-500 pl-4 uppercase">Strategic Insight</p>
-                    <p className="text-slate-300 text-[16px] leading-relaxed font-medium">
-                      밴드가 좁아진다는 것은 적정가($ {Math.round(stats.model.weighted).toLocaleString()})에 대한 수렴성이 강해짐을 의미합니다. 과거와 같은 극단적인 오버슈팅보다는 완만한 우상향 궤적을 그리며 가치 저장 수단으로서의 신뢰도를 높여가는 과정으로 해석하십시오.
-                    </p>
+                  <div className="space-y-2">
+                    <p className="text-amber-500 font-black text-[14px] tracking-tight italic uppercase">2. 성향별 투자 전략</p>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="p-4 bg-black/30 rounded-2xl border border-white/5">
+                        <p className="text-[11px] font-black text-slate-500 mb-1">단기 / 소액 투자자</p>
+                        <p className="text-[13px] text-slate-200">심리 지수 과열 시점에 짧은 수익 확정을 추천하며, 적정가 이하에서만 진입하십시오.</p>
+                      </div>
+                      <div className="p-4 bg-black/30 rounded-2xl border border-white/5">
+                        <p className="text-[11px] font-black text-slate-500 mb-1">장기 / 거액 투자자</p>
+                        <p className="text-[13px] text-slate-200">이격가(₩{Math.round(modelDeviationKrw).toLocaleString()})를 기준으로 분할 매수 범위를 설정하십시오.</p>
+                      </div>
+                    </div>
                   </div>
-                  <div className="pt-8 border-t border-white/5">
-                    <p className="text-slate-400 text-[15px] leading-relaxed italic font-bold">
-                      "변동성이 줄어드는 것은 자산이 '성인기'에 접어들었음을 뜻합니다. 줄어든 진폭 속에서도 확실한 퀀트의 이정표를 신뢰하십시오."
+                  <div className="pt-4 border-t border-white/5">
+                    <p className="text-slate-400 text-[13px] leading-relaxed italic font-bold">
+                      "변동성이 줄어드는 성숙 자산 단계에서는 '시간'이 가장 강력한 수익 엔진입니다."
                     </p>
                   </div>
                 </div>
@@ -304,42 +264,40 @@ const App: React.FC = () => {
         <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mb-20">
           <MetricCard label="모델 이격률 (Oscillator)" value={`${stats.deviationPercent > 0 ? '+' : ''}${stats.deviationPercent.toFixed(1)}%`} subValue="적정가와의 실시간 이격 정도" />
           <MetricCard label="공포 탐욕 지수 (Sentiment)" value={data.fngValue} subValue="시장 참여자들의 심리적 과열도" />
-          <MetricCard label="MVRV Z-Score (On-chain)" value={stats.mvrvEst.toFixed(2)} subValue="온체인 데이터 기반 가치 평가" />
+          <MetricCard label="MVRV Z-Score (On-chain)" value={stats.mvrvEst.toFixed(2)} subValue="온체인 기반 저점/고점 탐지" />
         </div>
 
-        {/* 판정 상세 기준 카드 - 차트 위로 이동 */}
+        {/* 판정 상세 기준 카드 */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-10 mb-12 font-sans">
           <StageCard title="이격률 판정" stages={STAGES.OSCILLATOR} currentVal={stats.oscillator} />
           <StageCard title="심리 지수 판정" stages={STAGES.FNG} currentVal={data.fngValue} />
           <StageCard title="온체인 판정" stages={STAGES.MVRV} currentVal={stats.mvrvEst} />
         </div>
 
-        {/* 차트 영역 */}
-        <section className="bg-slate-950 p-10 md:p-14 rounded-[4rem] border border-slate-900 shadow-3xl mb-20 relative overflow-hidden">
-          <div className="flex flex-col md:flex-row justify-between items-end mb-16 gap-8 text-left">
-            <div className="space-y-3">
-              <h3 className="text-3xl font-black text-white tracking-tighter uppercase italic font-sans">CONVERGING PRICE PATH (2017-2026)</h3>
-              <p className="text-slate-600 text-[11px] font-bold uppercase tracking-widest italic font-sans text-amber-500/80">Decay Mode Active // Volatility Dampening Sync</p>
+        {/* 차트 영역 - 여백 최소화 및 밴드 가시성 개선 */}
+        <section className="bg-slate-950 p-6 md:p-8 rounded-[3rem] border border-slate-900 shadow-3xl mb-20 relative overflow-hidden">
+          <div className="flex flex-col md:flex-row justify-between items-end mb-6 gap-8 text-left">
+            <div className="space-y-1">
+              <h3 className="text-xl font-black text-white tracking-tighter uppercase italic font-sans">CONVERGING PRICE PATH (2017-2026)</h3>
+              <p className="text-slate-600 text-[9px] font-bold uppercase tracking-widest italic font-sans text-amber-500/80">Decay Mode Active // Volatility Dampening Sync</p>
             </div>
-            <div className="flex flex-wrap gap-5 text-[10px] font-black uppercase tracking-widest italic font-sans">
-               <div className="flex items-center gap-3 px-4 py-2 bg-blue-500/10 rounded-xl border border-rose-500/20" style={{ color: COLORS.price }}><span className="w-2 h-2 rounded-full" style={{ backgroundColor: COLORS.price }}></span> 시장 가격</div>
-               <div className="flex items-center gap-3 px-4 py-2 bg-amber-500/10 text-amber-500 rounded-xl border border-amber-500/20"><span className="w-2 h-2 bg-amber-500 rounded-full"></span> 수렴 밴드</div>
+            <div className="flex flex-wrap gap-4 text-[9px] font-black uppercase tracking-widest italic font-sans">
+               <div className="flex items-center gap-2 px-3 py-1.5 bg-blue-500/10 rounded-lg border border-rose-500/20" style={{ color: COLORS.price }}><span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: COLORS.price }}></span> 시장 가격</div>
+               <div className="flex items-center gap-2 px-3 py-1.5 bg-amber-500/10 text-amber-500 rounded-lg border border-amber-500/20"><span className="w-1.5 h-1.5 bg-amber-500 rounded-full"></span> 수렴 밴드</div>
             </div>
           </div>
 
-          <div className="h-[650px] w-full">
+          <div className="h-[600px] w-full">
             <ResponsiveContainer width="100%" height="100%">
-              <ComposedChart data={chartData} margin={{ top: 20, right: 30, left: 10, bottom: 40 }}>
-                {/* 가이드라인 전체 연결을 위해 vertical={false} 유지하고 stroke 색상 조정 */}
+              <ComposedChart data={chartData} margin={{ top: 5, right: -5, left: -45, bottom: -10 }}>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#1e293b" />
                 <XAxis 
                   dataKey="timestamp" 
                   type="number"
                   domain={[new Date('2017-07-01').getTime(), 'dataMax']}
-                  tick={{fontSize: 10, fill: '#475569', fontWeight: 900}} 
+                  tick={{fontSize: 9, fill: '#475569', fontWeight: 900}} 
                   tickFormatter={(ts) => new Date(ts).getFullYear().toString()}
                   ticks={[
-                    new Date('2017-07-01').getTime(),
                     new Date('2018-01-01').getTime(),
                     new Date('2019-01-01').getTime(),
                     new Date('2020-01-01').getTime(),
@@ -352,24 +310,24 @@ const App: React.FC = () => {
                   ]}
                   axisLine={{ stroke: '#1e293b' }} 
                   tickLine={false} 
-                  dy={20} 
+                  dy={5}
                 />
                 <YAxis 
                   type="number" 
                   domain={[2000, 300000]} 
                   scale="log" 
                   orientation="right" 
-                  tick={{fontSize: 10, fill: '#475569', fontWeight: 900}} 
+                  tick={{fontSize: 9, fill: '#475569', fontWeight: 900}} 
                   tickFormatter={v => `$${Math.round(v/1000)}K`} 
                   axisLine={false} 
                   tickLine={false} 
-                  dx={20} 
+                  dx={5}
                 />
                 <Tooltip content={<CustomTooltip />} />
-                <Area name="상단 밴드" dataKey="upper" stroke="none" fill={COLORS.upper} fillOpacity={0.08} />
+                <Area name="상단 밴드" dataKey="upper" stroke="none" fill={COLORS.upper} fillOpacity={0.18} />
                 <Area name="하단 밴드" dataKey="lower" stroke="none" fill="#020617" fillOpacity={1} />
                 <Line name="적정 가치" dataKey="fair" stroke={COLORS.fair} strokeWidth={2} dot={false} strokeDasharray="5 5" opacity={0.6} />
-                <Line name="시장 가격" dataKey="price" stroke={COLORS.price} strokeWidth={3} dot={false} connectNulls={true} />
+                <Line name="시장 가격" dataKey="price" stroke={COLORS.price} strokeWidth={2.5} dot={false} connectNulls={true} />
               </ComposedChart>
             </ResponsiveContainer>
           </div>
@@ -423,20 +381,20 @@ const App: React.FC = () => {
           </div>
         </section>
 
-        {/* 장기 예측 매트릭스 섹션 - 최하단 */}
+        {/* 장기 예측 매트릭스 섹션 */}
         <section className="mb-24 text-left">
           <div className="bg-[#020617] rounded-[3.5rem] overflow-hidden border border-slate-800 shadow-3xl">
             <div className="px-12 py-10 border-b border-slate-800 bg-slate-950 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
               <div>
                 <h4 className="text-[14px] font-black tracking-[0.2em] text-white uppercase italic font-sans mb-1">LONG-TERM PROJECTION MATRIX</h4>
-                <p className="text-[9px] font-bold text-amber-500 uppercase tracking-widest italic font-sans">Maturity-Adjusted Volatility Decay Hybrid Model v8.9</p>
+                <p className="text-[9px] font-bold text-amber-500 uppercase tracking-widest italic font-sans">Maturity-Adjusted Volatility Decay Hybrid Model</p>
               </div>
               <div className="px-4 py-2 bg-emerald-500/10 border border-emerald-500/20 rounded-xl flex items-center gap-3">
                 <span className="text-[10px] font-black text-emerald-400 uppercase italic">Hybrid Spot: ${Math.round(stats.model.weighted).toLocaleString()} / ₩{Math.round(stats.model.weighted * data.usdKrw).toLocaleString()}</span>
               </div>
             </div>
-            <div className="overflow-x-auto">
-              <table className="w-full text-left font-sans min-w-[1000px]">
+            <div className="overflow-x-auto font-sans">
+              <table className="w-full text-left min-w-[1000px]">
                 <thead>
                   <tr className="bg-black/40 border-b border-slate-800">
                     <th className="px-10 py-6 text-[9px] font-black text-slate-500 uppercase tracking-widest italic">Period</th>
@@ -452,7 +410,6 @@ const App: React.FC = () => {
                       <td className="px-10 py-8">
                         <div className="space-y-1">
                           <p className="text-xl font-black text-white italic">{pred.years}Y <span className="text-slate-600 text-[12px] font-bold">({pred.dateLabel})</span></p>
-                          <p className="text-[9px] font-black text-slate-500 uppercase tracking-tighter">FUTURE PROJECTION</p>
                         </div>
                       </td>
                       <td className="px-10 py-8">
@@ -470,7 +427,6 @@ const App: React.FC = () => {
                       <td className="px-10 py-8">
                         <div className="flex items-center gap-3">
                           <span className="text-xl font-black text-white mono italic">+{pred.cagr.toFixed(1)}%</span>
-                          <div className="h-4 w-px bg-slate-800"></div>
                           <span className="text-[10px] font-bold text-slate-500 uppercase">Avg/Year</span>
                         </div>
                       </td>
@@ -489,9 +445,6 @@ const App: React.FC = () => {
               </table>
             </div>
           </div>
-          <p className="mt-8 text-[11px] font-bold text-slate-600 italic px-12 leading-relaxed text-center uppercase tracking-widest">
-            * CAGR is calculated based on the current price of ${data.currentPrice.toLocaleString()}. Values derived from the COMPASS HYBRID (Decaying 40% / Cycle 30% / Standard 30%) Engine.
-          </p>
         </section>
       </main>
 
