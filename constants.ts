@@ -1,7 +1,7 @@
 
 export const GENESIS_DATE = new Date('2009-01-03');
 export const HALVING_DATE = new Date('2024-04-20');
-export const CHART_START_DATE = new Date('2017-07-01'); // 2017년 7월부터 시작하도록 재조정
+export const CHART_START_DATE = new Date('2017-07-01');
 
 export const A_STD = 1.48e-17;
 export const B_STD = 5.78;
@@ -10,7 +10,7 @@ export const A_DECAY = 1.48e-15;
 export const B_DECAY = 5.25;
 
 /**
- * 지표 판정 기준 (Threshold 방식)
+ * 지표 판정 기준: 사용자 원문 Streamlit v8.2 텍스트 및 구성 완벽 복구
  */
 export const STAGES = {
   OSCILLATOR: [
