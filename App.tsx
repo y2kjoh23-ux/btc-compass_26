@@ -93,7 +93,6 @@ const App: React.FC = () => {
     });
     const lastTimestamp = historyPoints.length > 0 ? historyPoints[historyPoints.length - 1].timestamp : Date.now();
     const predictions = [];
-    // 그래프 예측 기간을 현재로부터 1년 후로 제한
     const oneYearFromNow = new Date();
     oneYearFromNow.setFullYear(oneYearFromNow.getFullYear() + 1);
     const endDate = oneYearFromNow.getTime();
@@ -132,40 +131,46 @@ const App: React.FC = () => {
   }
 
   const getStatusStyle = () => {
+    const { oscillator, mvrvEst } = stats;
+    const { fngValue } = data;
+
     if (stats.status === MarketStatus.ACCUMULATE) return { 
       accent: 'text-emerald-400', 
       bg: 'from-emerald-950/20', 
       border: 'border-emerald-500/20', 
-      label: 'ACCUMULATE (가치 매집 국면)',
-      guide: '<b>컨텍스트 분석:</b> 현재 시장은 멱법칙 모델 하단 밴드에 인접한 강력한 저평가 상태입니다. 거시적 공포가 가격을 실질 가치 아래로 억누르고 있는 최적의 매집 구간입니다.',
-      action: `<b>전술적 운용:</b> 자산 규모가 크다면 밸류 에버리징을 통해 하단 지지선 부근에서 비중을 공격적으로 확대하십시오. 소액 투자자는 수수료를 최소화하는 정기 DCA를 통해 수량을 확보하는 데 집중하십시오.`,
-      types: `<b>유형별 전략:</b> 장기 투자자는 향후 4년 주기의 정점을 목표로 홀딩 포지션을 구축하고, 단기 트레이더는 오실레이터의 과매도 해소 시점을 1차 목표가로 설정하십시오.`
+      label: '가치 매집 국면',
+      guide: `<b>포트폴리오 진단:</b> 현재 심리지수가 ${fngValue}점으로 극도의 공포 단계에 있으며, 이격률(${oscillator.toFixed(2)})이 모델 하단에 위치합니다. 이는 데이터 관점에서 매우 희귀한 '언더슈팅' 기회입니다.`,
+      action: `<b>자산 규모별 운용:</b> 고액 자산가는 분할 매수를 통해 포지션의 70% 이상을 구축하십시오. 소액 투자자는 정기 DCA 외에 추가 여유 자금을 투입하여 수량을 극대화할 시점입니다.`,
+      types: `<b>온체인 인텔리전스:</b> MVRV Z-Score가 ${mvrvEst.toFixed(2)}로 바닥권에 머물고 있습니다. 장기 홀더들이 매집을 시작하는 구간이므로, 단기 가격 흔들림에 연연하지 말고 목표 비중을 채우십시오.`
     };
     if (stats.status === MarketStatus.SELL) return { 
       accent: 'text-rose-400', 
       bg: 'from-rose-950/20', 
       border: 'border-rose-500/20', 
-      label: 'DISTRIBUTION (이익 실현 국면)',
-      guide: '<b>컨텍스트 분석:</b> 시장 가격이 모델의 상단 저항선에 도달하여 통계적 과열을 나타내고 있습니다. 역사적으로 이 지점은 개인 투자자의 탐욕이 극에 달하며 공급이 활발해지는 구간입니다.',
-      action: `<b>전술적 운용:</b> 신규 진입은 리스크 대비 보상이 현저히 낮습니다. 큰 금액 운용 시 현금 비중을 40% 이상 확보하여 변동성에 대비하십시오. DCA를 진행 중이라면 일시 중단하거나 분할 매도로 수익을 확정할 시기입니다.`,
-      types: `<b>유형별 전략:</b> 장기 포지션의 경우 원금 회수 후 '수익금만 보유'하는 프리-롤 전략을 권장하며, 단기 투자는 추세 이탈 확인 즉시 포지션을 청산하여 자본을 보호하십시오.`
+      label: '수익 실현 국면',
+      guide: `<b>포트폴리오 진단:</b> 심리지수 ${fngValue}점의 과열 상태와 높은 이격률(${oscillator.toFixed(2)})이 결합되어 통계적 정점에 도달했습니다. 이 시점의 추가 매수는 리스크 관리 차원에서 매우 지양해야 합니다.`,
+      action: `<b>자산 규모별 운용:</b> 큰 자금을 운용 중이라면 최소 30~50%의 현금화를 권장합니다. 분할 매도 시스템을 가동하십시오. 소액 투자자 역시 원금은 반드시 회수하여 다음 사이클의 시드머니를 확보하십시오.`,
+      types: `<b>온체인 인텔리전스:</b> MVRV Z-Score가 ${mvrvEst.toFixed(2)}를 상회하며 역사적 고점 신호를 보내고 있습니다. 탐욕이 지배하는 시장에서 한발 물러나 자본을 보호하는 것이 가장 세련된 전략입니다.`
     };
     return { 
       accent: 'text-amber-400', 
       bg: 'from-slate-900/40', 
       border: 'border-white/5', 
-      label: 'NEUTRAL (안정적 추세 추종)',
-      guide: '<b>컨텍스트 분석:</b> 가격이 가중 평균 모델의 적정 가치 궤도 내에서 안정적으로 움직이고 있습니다. 특별한 모멘텀보다는 유동성 사이클에 따른 점진적 우상향이 기대되는 중립 국면입니다.',
-      action: `<b>전술적 운용:</b> 감정에 치우친 매매보다는 기계적인 DCA를 유지하며 포트폴리오의 평단가를 관리하십시오. 자산이 큰 경우 모델 이격도를 모니터링하며 상/하단 밴드 이탈 시 대응 시나리오를 점검하십시오.`,
-      types: `<b>유형별 전략:</b> 장기 투자자는 비트코인 비중을 유지하며 시장 소음을 차단하고, 소액 투자자는 성급한 매도보다는 목표 자산 규모를 달성하기 위한 적립식 투자를 지속하십시오.`
+      label: '안정적 추세 추종',
+      guide: `<b>포트폴리오 진단:</b> 심리지수 ${fngValue}점과 이격률 ${oscillator.toFixed(2)}의 조합은 시장이 적정 가치 궤도 안에서 순항 중임을 뜻합니다. 급격한 방향성 전환보다는 점진적 성장이 예상되는 중립 상태입니다.`,
+      action: `<b>자산 규모별 운용:</b> 포트폴리오 리밸런싱을 최소화하고 기계적 DCA를 유지하십시오. 대규모 자산가는 상단 저항선 돌파 시나리오에 대비하여 현금 비중을 10~20% 내외로 유지하며 관망하십시오.`,
+      types: `<b>온체인 인텔리전스:</b> MVRV가 ${mvrvEst.toFixed(2)} 수준으로 온체인 데이터가 정상 범주에 있습니다. 장기 투자는 편안하게 포지션을 유지하고, 단기 대응은 모델 중심가($${Math.round(stats.model.weighted).toLocaleString()})를 기준으로 비중을 조절하십시오.`
     };
   };
 
   const style = getStatusStyle();
+  const deviationKrw = (data.currentPrice - stats.model.weighted) * data.usdKrw;
+  const deviationSign = deviationKrw >= 0 ? '+' : '-';
+  const deviationDisplay = `(${deviationSign} ₩ ${Math.abs(Math.round(deviationKrw)).toLocaleString()})`;
 
   const renderKrw = (usd: number) => (
     <p className="text-[10px] text-slate-500 font-bold opacity-70 mt-0.5 mono">
-      ₩{Math.round(usd * data.usdKrw).toLocaleString()}
+      ₩ {Math.round(usd * data.usdKrw).toLocaleString()}
     </p>
   );
 
@@ -174,7 +179,7 @@ const App: React.FC = () => {
       <header className="max-w-screen-2xl mx-auto px-4 md:px-8 py-6 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 border-b border-white/5">
         <div className="text-left">
           <h1 className="text-xl md:text-2xl font-black text-white tracking-tighter italic uppercase">BIT COMPASS <span className="text-amber-500">PRO</span></h1>
-          <p className="text-[9px] font-bold text-slate-600 uppercase tracking-widest mt-0.5">Maturity Volatility Decay Model v9.4</p>
+          <p className="text-[9px] font-bold text-slate-600 uppercase tracking-widest mt-0.5">Maturity Volatility Decay Model v9.5</p>
         </div>
         <div className="flex items-center gap-4 bg-slate-900/50 p-2 rounded-xl border border-white/5">
           <div className="text-right px-2">
@@ -192,14 +197,19 @@ const App: React.FC = () => {
           <div className="grid lg:grid-cols-12 gap-8 items-center">
             <div className="lg:col-span-5 space-y-6 text-left">
               <div className="space-y-2">
-                <div className="flex items-center gap-2 px-3 py-1 bg-black/40 rounded-full border border-white/5 w-fit">
-                   <div className={`w-1.5 h-1.5 rounded-full ${style.accent.replace('text', 'bg')} animate-pulse`}></div>
-                   <span className="text-[9px] font-black uppercase tracking-wider text-slate-300">{style.label}</span>
+                <div className="flex items-center gap-2 px-4 py-1.5 bg-black/40 rounded-full border border-white/5 w-fit">
+                   <div className={`w-2 h-2 rounded-full ${style.accent.replace('text', 'bg')} animate-pulse`}></div>
+                   <span className={`text-[11px] font-black uppercase tracking-wider ${style.accent}`}>{style.label}</span>
                 </div>
                 <h2 className="text-4xl md:text-5xl font-black text-white tracking-tighter italic mono">
                   ${data.currentPrice.toLocaleString()}
                 </h2>
-                <p className="text-xl text-slate-400 font-light italic">₩{Math.round(data.currentPrice * data.usdKrw).toLocaleString()}</p>
+                <div className="flex items-baseline gap-2">
+                  <p className="text-xl text-slate-400 font-light italic">₩ {Math.round(data.currentPrice * data.usdKrw).toLocaleString()}</p>
+                  <p className={`text-xs font-black mono ${deviationKrw >= 0 ? 'text-rose-500' : 'text-emerald-500'}`}>
+                    {deviationDisplay}
+                  </p>
+                </div>
               </div>
 
               <div className="p-4 bg-slate-900/60 rounded-2xl border border-white/5">
@@ -236,7 +246,7 @@ const App: React.FC = () => {
                   </div>
                   <div className="space-y-2">
                     <p className="text-amber-500 font-black text-[10px] uppercase tracking-widest mb-1">04. 집행 인텔리전스</p>
-                    <p className="text-[13px] text-slate-300 leading-relaxed">시장 변동성은 자산 성숙의 과정입니다. 모델 상단/하단 임계치를 기준으로 한 객관적 대응만이 장기적 초과 수익을 보장합니다.</p>
+                    <p className="text-[13px] text-slate-300 leading-relaxed">지표들의 유기적 연계를 통해 감정을 배제한 기계적 대응이 수반되어야 합니다. 현재의 이격도는 역사적 평균으로 회귀하려는 성질을 가지고 있습니다.</p>
                   </div>
                 </div>
               </div>
@@ -274,7 +284,6 @@ const App: React.FC = () => {
               <h3 className="text-lg font-black text-slate-900 tracking-tighter uppercase italic">Price Convergence Path (1Y Forecast)</h3>
               <p className="text-[8px] font-bold text-slate-600 uppercase tracking-widest mt-0.5">Maturity Adjusted Logarithmic Power Law</p>
             </div>
-            {/* 상단 범례 제거됨 (공간 확보) */}
           </div>
 
           <div className="h-[400px] md:h-[600px] w-full">
@@ -295,7 +304,7 @@ const App: React.FC = () => {
 
         <section className="bg-slate-900/40 rounded-3xl border border-white/5 overflow-hidden mb-8 text-left">
           <div className="px-6 py-4 bg-white/5 border-b border-white/5 flex justify-between items-center">
-            <h4 className="text-[10px] font-black tracking-widest text-amber-500 uppercase italic">HYBRID 멱법칙 상세 수치</h4>
+            <h4 className="text-[10px] font-black tracking-widest text-amber-500 uppercase italic">멱법칙 예측</h4>
             <span className="text-[8px] font-bold text-slate-600 uppercase italic">Current Logic Reference</span>
           </div>
           <div className="overflow-x-auto">
@@ -338,8 +347,8 @@ const App: React.FC = () => {
 
         <section className="bg-slate-900/40 rounded-3xl border border-white/5 overflow-hidden mb-10 text-left">
           <div className="px-6 py-4 bg-white/5 border-b border-white/5 flex justify-between items-center">
-            <h4 className="text-[10px] font-black tracking-widest text-emerald-500 uppercase italic">LONG-TERM PROJECTIONS (장기 가치 예측)</h4>
-            <span className="text-[8px] font-bold text-slate-600 uppercase italic">Hybrid Model Predictions</span>
+            <h4 className="text-[10px] font-black tracking-widest text-emerald-500 uppercase italic">LONG-TERM PROJECTIONS</h4>
+            <span className="text-[8px] font-bold text-slate-600 uppercase italic">Hybrid Model</span>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-left min-w-[700px] text-[12px]">
