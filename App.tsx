@@ -16,6 +16,8 @@ const COLORS = {
   price: '#1d4ed8'
 };
 
+const Space = () => <span className="text-[0.6em]">&nbsp;</span>;
+
 const CustomTooltip = ({ active, payload, label }: any) => {
   if (active && payload && payload.length) {
     const dateStr = new Date(label).toISOString().split('T')[0];
@@ -39,8 +41,12 @@ const CustomTooltip = ({ active, payload, label }: any) => {
                   <div className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: markerColor }}></div>
                   <span className="text-xs font-bold text-slate-600">{item.name}</span>
                 </div>
-                <span className="text-xs font-black mono text-slate-900">
-                  {item.value ? `$${Math.round(item.value).toLocaleString()}` : 'PREDICT'}
+                <span className="text-xs font-black mono italic text-slate-900">
+                  {item.value ? (
+                    <>
+                      <span className="opacity-60 text-[0.85em]">$</span><Space />{Math.round(item.value).toLocaleString()}
+                    </>
+                  ) : 'PREDICT'}
                 </span>
               </div>
             );
@@ -166,11 +172,15 @@ const App: React.FC = () => {
   const style = getStatusStyle();
   const deviationKrw = (data.currentPrice - stats.model.weighted) * data.usdKrw;
   const deviationSign = deviationKrw >= 0 ? '+' : '-';
-  const deviationDisplay = `(${deviationSign} ₩${Math.abs(Math.round(deviationKrw)).toLocaleString()})`;
+  const deviationDisplay = (
+    <>
+      <span className="opacity-70 text-[0.85em] italic">{deviationSign} ₩</span><Space />{Math.abs(Math.round(deviationKrw)).toLocaleString()}
+    </>
+  );
 
   const renderKrw = (usd: number) => (
-    <p className="text-xs text-slate-500 font-bold opacity-70 mt-0.5 mono">
-      ₩{Math.round(usd * data.usdKrw).toLocaleString()}
+    <p className="text-xs text-slate-500 font-bold opacity-70 mt-0.5 mono italic">
+      <span className="text-[0.85em]">₩</span><Space />{Math.round(usd * data.usdKrw).toLocaleString()}
     </p>
   );
 
@@ -180,7 +190,7 @@ const App: React.FC = () => {
         <div className="text-left">
           <h1 className="text-xl font-black text-white tracking-tighter italic uppercase flex items-baseline gap-1.5">
             <span>BIT COMPASS <span className="text-amber-500">PRO</span></span>
-            <span className="text-[11px] font-bold text-slate-600 uppercase tracking-widest not-italic">v9.9</span>
+            <span className="text-[11px] font-bold text-slate-600 uppercase tracking-widest not-italic">v10.3</span>
           </h1>
         </div>
         <button onClick={init} className="p-2 bg-slate-900/50 hover:bg-white/5 rounded-xl border border-white/5 transition-colors">
@@ -193,17 +203,19 @@ const App: React.FC = () => {
           <div className="flex flex-col gap-6">
             <div className="space-y-3">
               <h2 className="text-5xl font-black text-white tracking-tighter italic mono">
-                ${data.currentPrice.toLocaleString()}
+                <span className="opacity-70 text-4xl">$</span><Space />{data.currentPrice.toLocaleString()}
               </h2>
               <div className="flex flex-col gap-1">
                 <div className="flex items-baseline gap-2">
-                  <p className="text-2xl text-slate-400 font-light italic">₩{Math.round(data.currentPrice * data.usdKrw).toLocaleString()}</p>
-                  <p className={`text-sm font-black mono ${deviationKrw >= 0 ? 'text-rose-500' : 'text-emerald-400'}`}>
-                    {deviationDisplay}
+                  <p className="text-2xl text-slate-400 font-bold italic mono">
+                    <span className="opacity-70 text-[0.85em]">₩</span><Space />{Math.round(data.currentPrice * data.usdKrw).toLocaleString()}
+                  </p>
+                  <p className={`text-sm font-bold mono italic ${deviationKrw >= 0 ? 'text-rose-500' : 'text-emerald-400'}`}>
+                    ({deviationDisplay})
                   </p>
                 </div>
                 <div className="flex flex-col gap-0.5 mt-2">
-                  <p className="text-xs font-bold text-slate-500 uppercase tracking-widest">환율: ₩{data.usdKrw.toLocaleString()} <span className="opacity-50">(Frankfurter)</span></p>
+                  <p className="text-xs font-bold text-slate-500 uppercase tracking-widest">환율: <span className="opacity-70 text-[0.85em] italic">₩</span><Space />{data.usdKrw.toLocaleString()} <span className="opacity-50">(Frankfurter)</span></p>
                   <p className="text-[11px] font-bold text-slate-600 uppercase tracking-tight">Source: Binance | {data.lastUpdated}</p>
                 </div>
               </div>
@@ -301,15 +313,15 @@ const App: React.FC = () => {
                   <tr key={i} className={`${row.active ? 'bg-amber-500/[0.03]' : ''} hover:bg-white/[0.02]`}>
                     <td className="px-6 py-5"><span className={`font-black italic ${row.active ? 'text-amber-400' : 'text-slate-400'}`}>{row.name}</span></td>
                     <td className="px-6 py-5">
-                      <p className="mono font-bold italic text-rose-500">${Math.round(row.u).toLocaleString()}</p>
+                      <p className="mono font-bold italic text-rose-500"><span className="opacity-60 text-[0.85em]">$</span><Space />{Math.round(row.u).toLocaleString()}</p>
                       {renderKrw(row.u)}
                     </td>
                     <td className="px-6 py-5">
-                      <p className="mono font-black italic text-amber-500 text-sm">${Math.round(row.val).toLocaleString()}</p>
+                      <p className="mono font-black italic text-amber-500 text-sm"><span className="opacity-60 text-[0.85em]">$</span><Space />{Math.round(row.val).toLocaleString()}</p>
                       {renderKrw(row.val)}
                     </td>
                     <td className="px-6 py-5">
-                      <p className="mono font-bold italic text-emerald-500">${Math.round(row.l).toLocaleString()}</p>
+                      <p className="mono font-bold italic text-emerald-500"><span className="opacity-60 text-[0.85em]">$</span><Space />{Math.round(row.l).toLocaleString()}</p>
                       {renderKrw(row.l)}
                     </td>
                   </tr>
@@ -341,15 +353,15 @@ const App: React.FC = () => {
                       <span className="text-[10px] text-slate-600 mono font-bold">{proj.date}</span>
                     </td>
                     <td className="px-6 py-5">
-                      <p className="mono font-bold italic text-rose-500">${Math.round(proj.upper).toLocaleString()}</p>
+                      <p className="mono font-bold italic text-rose-500"><span className="opacity-60 text-[0.85em]">$</span><Space />{Math.round(proj.upper).toLocaleString()}</p>
                       {renderKrw(proj.upper)}
                     </td>
                     <td className="px-6 py-5">
-                      <p className="mono font-black italic text-amber-500 text-sm">${Math.round(proj.weighted).toLocaleString()}</p>
+                      <p className="mono font-black italic text-amber-500 text-sm"><span className="opacity-60 text-[0.85em]">$</span><Space />{Math.round(proj.weighted).toLocaleString()}</p>
                       {renderKrw(proj.weighted)}
                     </td>
                     <td className="px-6 py-5">
-                      <p className="mono font-bold italic text-emerald-500">${Math.round(proj.lower).toLocaleString()}</p>
+                      <p className="mono font-bold italic text-emerald-500"><span className="opacity-60 text-[0.85em]">$</span><Space />{Math.round(proj.lower).toLocaleString()}</p>
                       {renderKrw(proj.lower)}
                     </td>
                   </tr>
