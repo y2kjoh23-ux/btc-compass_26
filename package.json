@@ -1,5 +1,5 @@
 {
-  "name": "bit-compass-pro-v10.4-리스트-좌우-스크롤-일부고정",
+  "name": "bit-compass-pro-v11.5-로그-20분-단위로-테스트",
   "private": true,
   "version": "0.0.0",
   "type": "module",
@@ -11,7 +11,8 @@
   "dependencies": {
     "recharts": "^3.6.0",
     "react-dom": "^19.2.3",
-    "react": "^19.2.3"
+    "react": "^19.2.3",
+    "@google/genai": "^1.34.0"
   },
   "devDependencies": {
     "@types/node": "^22.14.0",

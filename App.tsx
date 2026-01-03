@@ -1,10 +1,11 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { fetchMarketData } from './services/dataService';
-import { getModelValues, getDynamicSigma, getDaysSinceGenesis } from './services/modelEngine';
+import { getModelValues } from './services/modelEngine';
 import { MarketData, MarketStatus } from './types';
 import StageCard from './components/StageCard';
 import { STAGES, CHART_START_DATE } from './constants';
+import { GoogleGenAI, Type } from "@google/genai";
 import { 
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ComposedChart, Line
 } from 'recharts';
@@ -17,6 +18,22 @@ const COLORS = {
 };
 
 const Space = () => <span className="text-[0.6em]">&nbsp;</span>;
+
+interface Snapshot {
+  id: number;
+  date: string;
+  status: MarketStatus;
+  oscillator: number;
+  fng: number;
+  mvrv: number;
+  price: number;
+  fair: number;
+}
+
+interface AIAnalysis {
+  summary: string;
+  dateInsights: { [key: string]: string };
+}
 
 const CustomTooltip = ({ active, payload, label }: any) => {
   if (active && payload && payload.length) {
@@ -44,7 +61,7 @@ const CustomTooltip = ({ active, payload, label }: any) => {
                 <span className="text-xs font-black mono italic text-slate-900">
                   {item.value ? (
                     <>
-                      <span className="opacity-60 text-[0.85em]">$</span><Space />{Math.round(item.value).toLocaleString()}
+                      <span className="opacity-60 text-[0.85em] italic">$</span><Space />{Math.round(item.value).toLocaleString()}
                     </>
                   ) : 'PREDICT'}
                 </span>
@@ -61,6 +78,11 @@ const CustomTooltip = ({ active, payload, label }: any) => {
 const App: React.FC = () => {
   const [data, setData] = useState<MarketData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [showHistory, setShowHistory] = useState(false);
+  const [history, setHistory] = useState<Snapshot[]>([]);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [aiAnalysis, setAiAnalysis] = useState<AIAnalysis | null>(null);
+  const [expandedDate, setExpandedDate] = useState<string | null>(null);
 
   const init = async () => {
     setLoading(true);
@@ -69,19 +91,20 @@ const App: React.FC = () => {
     setLoading(false);
   };
 
-  useEffect(() => { init(); }, []);
+  useEffect(() => { 
+    init();
+    const saved = localStorage.getItem('btc_compass_history');
+    if (saved) setHistory(JSON.parse(saved));
+  }, []);
 
   const stats = useMemo(() => {
     if (!data) return null;
     const model = getModelValues(new Date());
     const oscillator = data.currentPrice > 0 ? Math.log(data.currentPrice / model.weighted) : 0;
-    
     const priceRisk = Math.max(0, Math.min(100, ((oscillator + 0.5) / 1.0) * 100));
     const fngRisk = data.fngValue; 
     const mvrvEst = (oscillator * 6.5) + 2.5;
-    const mvrvRisk = Math.max(0, Math.min(100, (mvrvEst / 6) * 100));
-    
-    const riskPercent = (priceRisk * 0.6) + (fngRisk * 0.2) + (mvrvRisk * 0.2);
+    const riskPercent = (priceRisk * 0.6) + (fngRisk * 0.2) + ((Math.max(0, Math.min(100, (mvrvEst / 6) * 100))) * 0.2);
 
     let status = MarketStatus.STABLE;
     if (riskPercent < 35) status = MarketStatus.ACCUMULATE;
@@ -90,293 +113,372 @@ const App: React.FC = () => {
     return { model, oscillator, mvrvEst, status, riskPercent };
   }, [data]);
 
+  const fetchAIAnalysis = async (historyData: Snapshot[]) => {
+    if (historyData.length < 2 || isAnalyzing) return;
+    setIsAnalyzing(true);
+    try {
+      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+      const historyStr = historyData.slice(0, 10).map(h => 
+        `[${h.date}] Price: $${h.price}, Osc: ${h.oscillator.toFixed(2)}, F&G: ${h.fng}, MVRV: ${h.mvrv.toFixed(2)}`
+      ).join('\n');
+      const prompt = `퀀트 분석가로서 비트코인 히스토리를 요약하세요. JSON: { "summary": "전문 요약", "dateInsights": { "YYYY-MM-DD": "날짜별 특징" } } \n${historyStr}`;
+      const response = await ai.models.generateContent({
+        model: 'gemini-3-flash-preview',
+        contents: prompt,
+        config: { responseMimeType: 'application/json' }
+      });
+      setAiAnalysis(JSON.parse(response.text || '{}'));
+    } catch (e) { console.error(e); } finally { setIsAnalyzing(false); }
+  };
+
+  useEffect(() => {
+    if (showHistory && history.length >= 2 && !aiAnalysis) fetchAIAnalysis(history);
+  }, [showHistory, history]);
+
+  useEffect(() => {
+    if (data && stats) {
+      const savedHistory = localStorage.getItem('btc_compass_history');
+      const parsed: Snapshot[] = savedHistory ? JSON.parse(savedHistory) : [];
+      // 기록 주기 20분으로 변경
+      const TWENTY_MINUTES = 20 * 60 * 1000;
+      const lastEntry = parsed[0];
+      const now = Date.now();
+
+      if (!lastEntry || (now - lastEntry.id >= TWENTY_MINUTES)) {
+        const newEntry: Snapshot = {
+          id: now,
+          date: new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' }),
+          status: stats.status,
+          oscillator: stats.oscillator,
+          fng: data.fngValue,
+          mvrv: stats.mvrvEst,
+          price: data.currentPrice,
+          fair: stats.model.weighted
+        };
+        const updated = [newEntry, ...parsed].slice(0, 200); // 더 많은 로그 보관
+        localStorage.setItem('btc_compass_history', JSON.stringify(updated));
+        setHistory(updated);
+        setAiAnalysis(null);
+      }
+    }
+  }, [data, stats]);
+
   const chartData = useMemo(() => {
     if (!data || !data.history) return [];
-    const historyPoints = data.history.filter(h => new Date(h.date) >= CHART_START_DATE).map(h => {
-      const d = new Date(h.date);
-      const m = getModelValues(d);
-      return { timestamp: d.getTime(), price: h.price, fair: m.weighted, upper: m.upper, lower: m.lower };
+    return data.history.filter(h => new Date(h.date) >= CHART_START_DATE).map(h => {
+      const m = getModelValues(new Date(h.date));
+      return { timestamp: new Date(h.date).getTime(), price: h.price, fair: m.weighted, upper: m.upper, lower: m.lower };
     });
-    const lastTimestamp = historyPoints.length > 0 ? historyPoints[historyPoints.length - 1].timestamp : Date.now();
-    const predictions = [];
-    const oneYearFromNow = new Date();
-    oneYearFromNow.setFullYear(oneYearFromNow.getFullYear() + 1);
-    const endDate = oneYearFromNow.getTime();
-    
-    let currentTs = lastTimestamp + (7 * 24 * 60 * 60 * 1000);
-    while (currentTs <= endDate) {
-      const d = new Date(currentTs);
-      const m = getModelValues(d);
-      predictions.push({ timestamp: currentTs, price: null, fair: m.weighted, upper: m.upper, lower: m.lower });
-      currentTs += (7 * 24 * 60 * 60 * 1000);
-    }
-    return [...historyPoints, ...predictions];
   }, [data]);
 
   const projections = useMemo(() => {
-    const years = [3, 5, 7, 10, 15, 20];
-    return years.map(y => {
-      const targetDate = new Date();
-      targetDate.setFullYear(targetDate.getFullYear() + y);
-      const m = getModelValues(targetDate);
-      return { 
-        label: `${y}년 후 (${targetDate.getFullYear()})`,
-        date: targetDate.toISOString().split('T')[0], 
-        ...m 
-      };
+    return [3, 5, 7, 10, 15].map(y => {
+      const d = new Date(); d.setFullYear(d.getFullYear() + y);
+      const m = getModelValues(d);
+      return { label: `${y}Y`, date: d.toISOString().split('T')[0], ...m };
     });
   }, []);
 
-  if (loading || !data || !stats) {
-    return (
-      <div className="min-h-screen flex flex-col items-center justify-center bg-slate-950 text-white">
-        <div className="w-12 h-12 border-2 border-amber-500 border-t-transparent rounded-full animate-spin mb-4"></div>
-        <p className="text-xs font-black tracking-widest text-amber-500 uppercase">Synchronizing Quant Engine...</p>
-      </div>
-    );
-  }
+  const getStatusLabel = (status: MarketStatus) => {
+    if (status === MarketStatus.ACCUMULATE) return { 
+      text: '매집', 
+      desc: '저평가 매집 권고', 
+      headline: '역사적 저평가 임계점 도달: 공격적 비중 확대 및 매집 적기',
+      color: 'text-emerald-400', 
+      bg: 'bg-emerald-500/10' 
+    };
+    if (status === MarketStatus.SELL) return { 
+      text: '실현', 
+      desc: '과열 익절 권고', 
+      headline: '통계적 과열 및 탐욕 임계점: 자산 보호를 위한 수익 실현 및 리스크 관리',
+      color: 'text-rose-400', 
+      bg: 'bg-rose-500/10' 
+    };
+    return { 
+      text: '안정', 
+      desc: '중립 비중 유지', 
+      headline: '적정 가치 궤도 안착: 기계적 DCA 유지 및 시장 추세 관망',
+      color: 'text-amber-400', 
+      bg: 'bg-amber-500/10' 
+    };
+  };
 
-  const getStatusStyle = () => {
+  const getStatusFullInfo = () => {
+    if (!data || !stats) return { guide: '', action: '', types: '' };
     const { oscillator, mvrvEst } = stats;
     const { fngValue } = data;
 
     if (stats.status === MarketStatus.ACCUMULATE) return { 
-      accent: 'text-emerald-400', 
-      bg: 'from-emerald-950/20', 
-      border: 'border-emerald-500/20', 
-      label: '가치 매집 국면',
-      guide: `<b>포트폴리오 진단:</b> 현재 심리지수가 ${fngValue}점으로 공포 단계에 있으며, 이격률(${oscillator.toFixed(2)})이 모델 하단에 위치합니다. 이는 데이터 관점에서 매우 희귀한 '언더슈팅' 기회입니다.`,
-      action: `<b>자산 규모별 운용:</b> 고액 자산가는 분할 매수를 통해 포지션의 70% 이상을 구축하십시오. 소액 투자자는 정기 DCA 외에 추가 여유 자금을 투입하여 수량을 극대화할 시점입니다.`,
-      types: `<b>온체인 인텔리전스:</b> MVRV Z-Score가 ${mvrvEst.toFixed(2)}로 바닥권에 머물고 있습니다. 장기 홀더들이 매집을 시작하는 구간이므로, 단기 가격 흔들림에 연연하지 말고 목표 비중을 채우십시오.`
+      guide: `공포 지수 ${fngValue}점과 이격률 ${oscillator.toFixed(2)}이 보여주는 강력한 저평가 구간입니다. 데이터는 현재 시점이 역사적 언더슈팅 기회임을 강력하게 시사합니다.`,
+      action: `고액 자산가는 목표 비중의 70% 이상을 구축할 것을 권장합니다. 소액 투자자는 정기 DCA 외에 추가 자금을 투입하여 수량을 극대화하십시오.`,
+      types: `MVRV Z-Score ${mvrvEst.toFixed(2)}는 바닥권 신호입니다. 장기적 관점에서 가격 흔들림은 소음일 뿐이며, 모델 하단은 견고한 지지력을 제공할 것입니다.`
     };
     if (stats.status === MarketStatus.SELL) return { 
-      accent: 'text-rose-400', 
-      bg: 'from-rose-950/20', 
-      border: 'border-rose-500/20', 
-      label: '수익 실현 국면',
-      guide: `<b>포트폴리오 진단:</b> 심리지수 ${fngValue}점의 과열 상태와 높은 이격률(${oscillator.toFixed(2)})이 결합되어 통계적 정점에 도달했습니다. 이 시점의 추가 매수는 리스크 관리 차원에서 매우 지양해야 합니다.`,
-      action: `<b>자산 규모별 운용:</b> 큰 자금을 운용 중이라면 최소 30~50%의 현금화를 권장합니다. 분할 매도 시스템을 가동하십시오. 소액 투자자 역시 원금은 반드시 회수하여 다음 사이클의 시드머니를 확보하십시오.`,
-      types: `<b>온체인 인텔리전스:</b> MVRV Z-Score가 ${mvrvEst.toFixed(2)}를 상회하며 역사적 고점 신호를 보내고 있습니다. 탐욕이 지배하는 시장에서 한발 물러나 자본을 보호하는 것이 가장 세련된 전략입니다.`
+      guide: `탐욕 지수 ${fngValue}점의 과열과 이격률 ${oscillator.toFixed(2)}의 조합은 통계적 정점에 도달했음을 의미합니다. 추가 매수는 리스크 관리 차원에서 지양해야 합니다.`,
+      action: `자본 보호가 최우선입니다. 원금 회수 혹은 부분 현금화를 통해 수익을 실현하십시오. 무리한 홀딩보다는 포트폴리오의 안정성을 확보할 시점입니다.`,
+      types: `MVRV가 ${mvrvEst.toFixed(2)}를 상회하며 과열 신호를 보내고 있습니다. 탐욕이 지배하는 시장에서 냉정한 퀀트 모델의 지표에 따라 비중을 조절하십시오.`
     };
     return { 
-      accent: 'text-amber-400', 
-      bg: 'from-slate-900/40', 
-      border: 'border-white/5', 
-      label: '안정적 추세 추종',
-      guide: `<b>포트폴리오 진단:</b> 심리지수 ${fngValue}점과 이격률 ${oscillator.toFixed(2)}의 조합은 시장이 적정 가치 궤도 안에서 순항 중임을 뜻합니다. 급격한 방향성 전환보다는 점진적 성장이 예상되는 중립 상태입니다.`,
-      action: `<b>자산 규모별 운용:</b> 포트폴리오 리밸런싱을 최소화하고 기계적 DCA를 유지하십시오. 대규모 자산가는 상단 저항선 돌파 시나리오에 대비하여 현금 비중을 10~20% 내외로 유지하며 관망하십시오.`,
-      types: `<b>온체인 인텔리전스:</b> MVRV가 ${mvrvEst.toFixed(2)} 수준으로 온체인 데이터가 정상 범주에 있습니다. 장기 투자는 편안하게 포지션을 유지하고, 단기 대응은 모델 중심가($${Math.round(stats.model.weighted).toLocaleString()})를 기준으로 비중을 조절하십시오.`
+      guide: `현재 심리지수 ${fngValue}점과 이격률 ${oscillator.toFixed(2)}은 시장이 적정 가치 궤도 안에서 순항 중임을 뜻합니다. 급격한 변화보다는 안정적인 추세가 예상됩니다.`,
+      action: `기존의 기계적 DCA 전략을 유지하십시오. 대규모 자산가는 현금 비중을 10~20% 내외로 유지하며 모델의 중심선 근처에서의 등락을 관망하십시오.`,
+      types: `MVRV ${mvrvEst.toFixed(2)}는 온체인 데이터가 정상 범주에 있음을 보여줍니다. 장기 포지션을 편안하게 유지하며, 불필요한 잦은 매매를 줄이는 것이 최선입니다.`
     };
   };
 
-  const style = getStatusStyle();
-  const deviationKrw = (data.currentPrice - stats.model.weighted) * data.usdKrw;
-  const deviationSign = deviationKrw >= 0 ? '+' : '-';
-  const deviationDisplay = (
-    <>
-      <span className="opacity-70 text-[0.85em] italic">{deviationSign} ₩</span><Space />{Math.abs(Math.round(deviationKrw)).toLocaleString()}
-    </>
-  );
+  const clearHistory = () => {
+    if (window.confirm('모든 로그를 삭제하시겠습니까?')) {
+      localStorage.removeItem('btc_compass_history');
+      setHistory([]);
+      setAiAnalysis(null);
+      setExpandedDate(null);
+    }
+  };
 
-  const renderKrw = (usd: number) => (
-    <p className="text-xs text-slate-500 font-bold opacity-70 mt-0.5 mono italic text-nowrap">
-      <span className="text-[0.85em]">₩</span><Space />{Math.round(usd * data.usdKrw).toLocaleString()}
-    </p>
-  );
+  const renderPriceWithKrw = (usd: number, colorClass: string = "text-white") => {
+    if (!data) return null;
+    const krw = Math.round(usd * data.usdKrw);
+    return (
+      <div className="flex flex-col items-end">
+        <p className={`mono font-black italic ${colorClass} text-nowrap`}>
+          <span className="opacity-60 text-[0.85em] italic">$</span><Space />{Math.round(usd).toLocaleString()}
+        </p>
+        <p className="text-[10px] text-slate-500 font-bold opacity-70 mono italic whitespace-nowrap mt-0.5">
+          <span className="text-[0.85em] italic">₩</span><Space />{krw.toLocaleString()}
+        </p>
+      </div>
+    );
+  };
+
+  if (loading || !data || !stats) return <div className="min-h-screen flex items-center justify-center bg-slate-950 text-amber-500 font-black uppercase tracking-widest animate-pulse">Synchronizing...</div>;
+
+  const deviationKrw = (data.currentPrice - stats.model.weighted) * data.usdKrw;
+  const info = getStatusFullInfo();
+  const label = getStatusLabel(stats.status);
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-300 font-sans text-left">
-      <header className="max-w-screen-2xl mx-auto px-4 py-2 flex justify-between items-center border-b border-white/5">
-        <div className="text-left">
-          <h1 className="text-xl font-black text-white tracking-tighter italic uppercase flex items-baseline gap-1.5">
-            <span>BIT COMPASS <span className="text-amber-500">PRO</span></span>
-            <span className="text-[11px] font-bold text-slate-600 uppercase tracking-widest not-italic">v10.4</span>
-          </h1>
+    <div className="min-h-screen bg-slate-950 text-slate-300 font-sans text-left relative overflow-x-hidden">
+      {/* Snapshot Log Modal */}
+      {showHistory && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/95 backdrop-blur-md" onClick={() => setShowHistory(false)}>
+          <div className="bg-slate-900 w-full max-w-5xl max-h-[90vh] rounded-3xl border border-white/10 flex flex-col overflow-hidden shadow-2xl" onClick={e => e.stopPropagation()}>
+            <div className="px-6 py-4 border-b border-white/5 flex justify-between items-center bg-slate-900/50">
+              <h3 className="text-sm font-black italic uppercase tracking-widest text-white">Neural Snapshot Log (20m Cycle)</h3>
+              <button onClick={() => setShowHistory(false)} className="p-2 hover:bg-white/5 rounded-full transition-colors">
+                <svg className="w-5 h-5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M6 18L18 6M6 6l12 12"></path></svg>
+              </button>
+            </div>
+            
+            <div className="flex-1 overflow-y-auto px-2 py-4 custom-scrollbar">
+              {aiAnalysis && <div className="mb-6 bg-indigo-500/5 border border-indigo-500/20 rounded-2xl p-4 text-[11px] leading-relaxed italic text-slate-300">{aiAnalysis.summary}</div>}
+
+              {/* Log Table Header: 컬럼 간격 및 명칭 조정 */}
+              <div className="grid grid-cols-12 gap-0 px-1 py-2 text-[9px] font-black uppercase text-slate-600 tracking-tighter border-b border-white/5 mb-2">
+                <div className="col-span-1 pl-2">Time</div>
+                <div className="col-span-5 text-center">Stat Analysis</div>
+                <div className="col-span-2 text-right">DEV ($)</div>
+                <div className="col-span-1 text-right">OSC</div>
+                <div className="col-span-1 text-right">F&G</div>
+                <div className="col-span-2 text-right pr-2">MVRV</div>
+              </div>
+
+              <div className="space-y-1 mb-8">
+                {history.length === 0 ? <div className="py-20 text-center opacity-20 text-[10px] uppercase font-black tracking-widest">No Logs Found</div> : 
+                  history.map((h, idx) => {
+                    const hStyle = getStatusLabel(h.status);
+                    const insight = aiAnalysis?.dateInsights[h.date];
+                    const isExpanded = expandedDate === h.date;
+                    const devVal = h.price - h.fair;
+
+                    return (
+                      <div key={h.id}>
+                        <div onClick={() => insight && setExpandedDate(isExpanded ? null : h.date)} className={`grid grid-cols-12 gap-0 px-1 py-2 rounded-lg text-[10px] items-center transition-colors cursor-pointer ${isExpanded ? 'bg-white/10' : 'hover:bg-white/5'}`}>
+                          <div className="col-span-1 font-bold mono text-slate-500 whitespace-nowrap pl-2">{h.date}</div>
+                          <div className="col-span-5 text-center">
+                            <span className={`px-2 py-0.5 rounded-md font-black text-[9px] ${hStyle.bg} ${hStyle.color} tracking-tighter whitespace-nowrap inline-block`}>
+                              {hStyle.desc}
+                            </span>
+                          </div>
+                          <div className={`col-span-2 text-right font-black mono whitespace-nowrap italic ${devVal >= 0 ? 'text-rose-500' : 'text-emerald-500'}`}>
+                            {devVal >= 0 ? '+' : ''}{Math.round(devVal).toLocaleString()}
+                          </div>
+                          <div className="col-span-1 text-right mono text-slate-500 whitespace-nowrap">{h.oscillator.toFixed(2)}</div>
+                          <div className="col-span-1 text-right mono text-slate-500 whitespace-nowrap">{h.fng}</div>
+                          <div className="col-span-2 text-right mono text-slate-500 whitespace-nowrap pr-2">{h.mvrv.toFixed(1)}</div>
+                        </div>
+                        {isExpanded && insight && <div className="px-4 py-3 bg-indigo-500/5 border-l-2 border-indigo-500 mx-2 mb-2 text-[10px] text-indigo-300 font-bold italic leading-relaxed">{insight}</div>}
+                      </div>
+                    );
+                  })
+                }
+              </div>
+
+              {/* 하단 통합 흐름 분석 섹션 */}
+              {history.length >= 2 && (
+                <div className="mt-8 bg-slate-950/50 border border-white/5 rounded-3xl p-6">
+                  <div className="flex items-center gap-2 mb-4">
+                    <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></div>
+                    <span className="text-[10px] font-black uppercase tracking-[0.2em] text-emerald-500 italic">Intra-Day Flow Synthesis (20m Unit)</span>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div className="space-y-4">
+                      <div className="bg-white/5 p-4 rounded-2xl border border-white/5">
+                        <p className="text-[9px] font-black text-slate-600 uppercase mb-2 tracking-widest">단기 가격 추이 (Micro Momentum)</p>
+                        <p className="text-[11px] leading-relaxed text-slate-400 italic">
+                          최근 {history.length * 20}분간의 데이터 분석 결과, 가격은 <span className="text-slate-200 font-black">${Math.round(history[history.length-1].price).toLocaleString()}</span>에서 
+                          현재 <span className="text-white font-black">${Math.round(history[0].price).toLocaleString()}</span>로 이동했습니다. 
+                          20분 단위의 초단기 스냅샷은 시장의 미세한 심리 변화를 반영하며, 현재는 {history[0].price > history[1].price ? "상방 압력이 우세한 소폭 반등" : "하방 압력이 작용하는 미세 조정"} 구간으로 관측됩니다.
+                        </p>
+                      </div>
+                    </div>
+                    <div className="space-y-4">
+                      <div className="bg-indigo-500/5 p-4 rounded-2xl border border-indigo-500/10">
+                        <p className="text-[9px] font-black text-indigo-400/70 uppercase mb-2 tracking-widest">데이터 시계열 진단 (Time-Series AI)</p>
+                        {aiAnalysis ? (
+                          <p className="text-[11px] leading-relaxed text-slate-400 italic font-medium">{aiAnalysis.summary}</p>
+                        ) : (
+                          <p className="text-[11px] leading-relaxed text-slate-400 italic">20분 간격의 미세 변동성을 기반으로 한 AI 분석 결과가 곧 도출됩니다. 잠시만 기다려 주십시오.</p>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+            
+            <div className="p-4 bg-slate-950/50 border-t border-white/5 flex justify-between items-center">
+              <span className="text-[9px] font-black text-slate-600 uppercase tracking-widest italic">20M Auto-Sync: DEV(Gap to Fair) | Micro-Flow Synthesis</span>
+              <button onClick={clearHistory} className="px-3 py-2 text-[9px] font-black uppercase tracking-widest text-slate-500 hover:text-rose-500 transition-colors">Clear All Logs</button>
+            </div>
+          </div>
         </div>
-        <button onClick={init} className="p-2 bg-slate-900/50 hover:bg-white/5 rounded-xl border border-white/5 transition-colors">
-          <svg className="w-5 h-5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
-        </button>
+      )}
+
+      <header className="max-w-screen-2xl mx-auto px-4 py-3 flex justify-between items-center border-b border-white/5 bg-slate-950/80 backdrop-blur-md sticky top-0 z-50">
+        <h1 className="text-lg font-black text-white tracking-tighter italic uppercase flex items-baseline gap-1.5">BIT COMPASS <span className="text-amber-500">PRO</span> <span className="text-[9px] font-bold text-slate-700 tracking-widest not-italic">v11.5</span></h1>
+        <div className="flex items-center gap-2">
+          <button onClick={() => setShowHistory(true)} className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-900/50 hover:bg-white/5 rounded-xl border border-white/5 transition-colors">
+            <svg className="w-3.5 h-3.5 text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+            <span className="text-[9px] font-black uppercase tracking-widest text-slate-400">Log</span>
+          </button>
+          <button onClick={init} className="p-1.5 bg-slate-900/50 hover:bg-white/5 rounded-lg border border-white/5 transition-colors"><svg className="w-4 h-4 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357-2H15"></path></svg></button>
+        </div>
       </header>
 
-      <main className="max-w-screen-2xl mx-auto px-4 mt-2 pb-6">
-        <section className={`relative rounded-3xl p-6 mb-8 border ${style.border} bg-gradient-to-br ${style.bg} to-slate-950 shadow-2xl overflow-hidden`}>
-          <div className="flex flex-col gap-6">
-            <div className="space-y-3">
-              <h2 className="text-5xl font-black text-white tracking-tighter italic mono">
-                <span className="opacity-70 text-4xl">$</span><Space />{data.currentPrice.toLocaleString()}
+      <main className="max-w-screen-2xl mx-auto px-4 mt-6 pb-20 space-y-8 text-left">
+        {/* 메인 분석 섹션: 여백 줄임 및 헤드라인 강화 */}
+        <section className="bg-gradient-to-br from-slate-900/60 to-slate-950 border border-white/5 rounded-[2.5rem] p-6 md:p-8 shadow-2xl overflow-hidden relative group">
+          <div className="space-y-8">
+            <div className="space-y-4">
+              <h2 className="text-6xl font-black text-white italic mono tracking-tighter leading-none">
+                <span className="opacity-50 text-3xl italic">$</span><Space />{data.currentPrice.toLocaleString()}
               </h2>
-              <div className="flex flex-col gap-1">
-                <div className="flex items-baseline gap-2">
-                  <p className="text-2xl text-slate-400 font-bold italic mono">
-                    <span className="opacity-70 text-[0.85em]">₩</span><Space />{Math.round(data.currentPrice * data.usdKrw).toLocaleString()}
-                  </p>
-                  <p className={`text-sm font-bold mono italic ${deviationKrw >= 0 ? 'text-rose-500' : 'text-emerald-400'}`}>
-                    ({deviationDisplay})
-                  </p>
-                </div>
-                <div className="flex flex-col gap-0.5 mt-2">
-                  <p className="text-xs font-bold text-slate-500 uppercase tracking-widest text-nowrap">환율: <span className="opacity-70 text-[0.85em] italic">₩</span><Space />{data.usdKrw.toLocaleString()} <span className="opacity-50">(Frankfurter)</span></p>
-                  <p className="text-[11px] font-bold text-slate-600 uppercase tracking-tight">Source: Binance | {data.lastUpdated}</p>
-                </div>
+              <div className="flex items-baseline gap-2">
+                <p className="text-2xl text-slate-500 font-bold italic mono">
+                  <span className="text-[0.8em] italic opacity-60">₩</span><Space />{Math.round(data.currentPrice * data.usdKrw).toLocaleString()}
+                </p>
+                <p className={`text-xs font-black mono italic ${deviationKrw >= 0 ? 'text-rose-500' : 'text-emerald-400'}`}>
+                  ({deviationKrw >= 0 ? '+' : '-'} <span className="text-[0.8em] italic opacity-60">₩</span><Space />{Math.abs(Math.round(deviationKrw)).toLocaleString()})
+                </p>
               </div>
             </div>
 
-            <div className="bg-white/5 backdrop-blur-md p-6 rounded-2xl border border-white/10 space-y-6">
-              <div className="flex items-center gap-3 border-b border-white/5 pb-3">
-                 <div className={`w-2 h-2 rounded-full ${style.accent.replace('text', 'bg')} animate-pulse`}></div>
-                 <span className={`text-[13px] font-black uppercase tracking-wider ${style.accent}`}>{style.label}</span>
+            <div className="bg-white/5 backdrop-blur-sm p-4 md:p-6 rounded-3xl border border-white/10 space-y-6">
+              <div className="flex items-center gap-2 border-b border-white/5 pb-4">
+                 <div className={`w-2.5 h-2.5 rounded-full ${label.color.replace('text', 'bg')} animate-pulse`}></div>
+                 <h3 className={`text-[13px] md:text-[15px] font-black uppercase tracking-tight ${label.color}`}>
+                   {label.headline}
+                 </h3>
               </div>
-              <div className="grid grid-cols-1 gap-6">
-                <div className="space-y-1">
-                  <p className="text-amber-500 font-black text-xs uppercase tracking-widest mb-1">01. 마켓 컨텍스트 분석</p>
-                  <p className="text-[14px] text-slate-300 leading-relaxed" dangerouslySetInnerHTML={{ __html: style.guide }}></p>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6 md:gap-8 px-1">
+                <div>
+                  <p className="text-amber-500 font-black text-[10px] uppercase tracking-widest mb-2 italic">01. 컨텍스트 (Analysis)</p>
+                  <p className="text-[12px] text-slate-300 leading-relaxed font-medium italic">{info.guide}</p>
                 </div>
-                <div className="space-y-1">
-                  <p className="text-amber-500 font-black text-xs uppercase tracking-widest mb-1">02. 포트폴리오 운용 최적화</p>
-                  <p className="text-[14px] text-slate-300 leading-relaxed" dangerouslySetInnerHTML={{ __html: style.action }}></p>
+                <div>
+                  <p className="text-amber-500 font-black text-[10px] uppercase tracking-widest mb-2 italic">02. 최적화 (Optimization)</p>
+                  <p className="text-[12px] text-slate-300 leading-relaxed font-medium italic">{info.action}</p>
                 </div>
-                <div className="space-y-1">
-                  <p className="text-amber-500 font-black text-xs uppercase tracking-widest mb-1">03. 투자 유형별 전술</p>
-                  <p className="text-[14px] text-slate-300 leading-relaxed" dangerouslySetInnerHTML={{ __html: style.types }}></p>
+                <div>
+                  <p className="text-amber-500 font-black text-[10px] uppercase tracking-widest mb-2 italic">03. 인텔리전스 (Synthesis)</p>
+                  <p className="text-[12px] text-slate-300 leading-relaxed font-medium italic">{info.types}</p>
                 </div>
               </div>
             </div>
           </div>
         </section>
 
-        <div className="grid grid-cols-1 gap-4 mb-8">
-          <StageCard 
-            title="OSCILLATOR (이격률)" 
-            displayValue={`${stats.oscillator >= 0 ? '+' : ''}${stats.oscillator.toFixed(2)}`}
-            subLabel=""
-            stages={STAGES.OSCILLATOR} 
-            currentVal={stats.oscillator} 
-          />
-          <StageCard 
-            title="SENTIMENT (심리지수)" 
-            displayValue={data.fngValue}
-            subLabel=""
-            stages={STAGES.FNG} 
-            currentVal={data.fngValue} 
-          />
-          <StageCard 
-            title="MVRV Z-SCORE (온체인)" 
-            displayValue={stats.mvrvEst.toFixed(2)}
-            subLabel=""
-            stages={STAGES.MVRV} 
-            currentVal={stats.mvrvEst} 
-          />
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <StageCard title="OSCILLATOR" displayValue={`${stats.oscillator >= 0 ? '+' : ''}${stats.oscillator.toFixed(2)}`} subLabel="" stages={STAGES.OSCILLATOR} currentVal={stats.oscillator} />
+          <StageCard title="SENTIMENT" displayValue={data.fngValue} subLabel="" stages={STAGES.FNG} currentVal={data.fngValue} />
+          <StageCard title="MVRV Z-SCORE" displayValue={stats.mvrvEst.toFixed(2)} subLabel="" stages={STAGES.MVRV} currentVal={stats.mvrvEst} />
         </div>
 
-        <section className="bg-slate-300 p-4 rounded-3xl border border-slate-400 shadow-2xl mb-8 relative overflow-hidden">
-          <div className="flex justify-between items-end mb-4">
-            <h3 className="text-lg font-black text-slate-900 tracking-tighter uppercase italic">Price Convergence Path</h3>
-          </div>
-
-          <div className="h-[350px] md:h-[600px] w-full">
-            <ResponsiveContainer width="100%" height="100%">
-              <ComposedChart data={chartData} margin={{ top: 0, right: 0, left: 0, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#94a3b8" />
-                <XAxis dataKey="timestamp" type="number" domain={[new Date('2017-07-01').getTime(), 'dataMax']} hide={true} />
-                <YAxis type="number" domain={[2000, 300000]} scale="log" hide={true} />
-                <Tooltip content={<CustomTooltip />} cursor={{stroke: '#64748b'}} />
-                <Line name="상단 밴드" dataKey="upper" stroke={COLORS.upper} strokeWidth={1.5} dot={false} strokeDasharray="4 4" />
-                <Line name="하단 밴드" dataKey="lower" stroke={COLORS.lower} strokeWidth={1.5} dot={false} strokeDasharray="4 4" />
-                <Line name="적정 가치" dataKey="fair" stroke={COLORS.fair} strokeWidth={2} dot={false} opacity={1} />
-                <Line name="시장 가격" dataKey="price" stroke={COLORS.price} strokeWidth={3} dot={false} connectNulls={true} />
-              </ComposedChart>
-            </ResponsiveContainer>
-          </div>
+        <section className="bg-slate-300 p-2 rounded-[3rem] border border-slate-400 shadow-2xl relative overflow-hidden h-[450px] md:h-[650px]">
+          <ResponsiveContainer width="100%" height="100%">
+            <ComposedChart data={chartData} margin={{ top: 30, right: 10, left: 10, bottom: 30 }}>
+              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#cbd5e1" />
+              <XAxis dataKey="timestamp" type="number" domain={[new Date('2017-07-01').getTime(), 'dataMax']} hide={true} />
+              <YAxis type="number" domain={[2000, 500000]} scale="log" hide={true} />
+              <Tooltip content={<CustomTooltip />} cursor={{stroke: '#64748b', strokeWidth: 1}} />
+              <Line name="상단 밴드" dataKey="upper" stroke={COLORS.upper} strokeWidth={1} dot={false} strokeDasharray="4 4" />
+              <Line name="하단 밴드" dataKey="lower" stroke={COLORS.lower} strokeWidth={1} dot={false} strokeDasharray="4 4" />
+              <Line name="적정 가치" dataKey="fair" stroke={COLORS.fair} strokeWidth={2.5} dot={false} />
+              <Line name="시장 가격" dataKey="price" stroke={COLORS.price} strokeWidth={4} dot={false} connectNulls={true} />
+            </ComposedChart>
+          </ResponsiveContainer>
         </section>
 
-        <section className="bg-slate-900/40 rounded-3xl border border-white/5 overflow-hidden mb-6 text-left">
-          <div className="px-6 py-4 bg-white/5 border-b border-white/5">
-            <h4 className="text-xs font-black tracking-widest text-amber-500 uppercase italic">멱법칙 모델</h4>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-8 text-left">
+          <div className="bg-slate-900/40 rounded-3xl border border-white/5 overflow-hidden">
+            <div className="px-6 py-4 border-b border-white/5"><h4 className="text-[10px] font-black tracking-widest text-amber-500 uppercase italic">Model Convergence</h4></div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-[11px] table-fixed min-w-[500px]">
+                <thead className="bg-black/20 text-slate-600 font-black uppercase text-[9px] italic">
+                  <tr><th className="px-6 py-4 text-left">Engine</th><th className="px-6 py-4 text-right">Upper Band</th><th className="px-6 py-4 text-right">Fair Value</th><th className="px-6 py-4 text-right">Lower Band</th></tr>
+                </thead>
+                <tbody className="divide-y divide-white/5">
+                  {[
+                    { n: 'HYBRID', v: stats.model.weighted, u: stats.model.upper, l: stats.model.lower },
+                    { n: 'DECAYING', v: stats.model.decaying, u: stats.model.decaying * 1.6, l: stats.model.decaying * 0.6 },
+                    { n: 'CYCLE', v: stats.model.cycle, u: stats.model.cycle * 1.6, l: stats.model.cycle * 0.6 },
+                    { n: 'STANDARD', v: stats.model.standard, u: stats.model.standard * 1.6, l: stats.model.standard * 0.6 },
+                  ].map((r, i) => (
+                    <tr key={i} className="hover:bg-white/[0.02]">
+                      <td className="px-6 py-6 font-black italic text-slate-400">{r.n}</td>
+                      <td className="px-6 py-6 text-right">{renderPriceWithKrw(r.u, "text-rose-500")}</td>
+                      <td className="px-6 py-6 text-right">{renderPriceWithKrw(r.v, "text-amber-500 font-black")}</td>
+                      <td className="px-6 py-6 text-right">{renderPriceWithKrw(r.l, "text-emerald-500")}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
-          <div className="overflow-x-auto custom-scrollbar">
-            <table className="w-full text-left min-w-[600px] text-xs table-fixed">
-              <thead className="bg-black/20 text-slate-500 font-black uppercase text-[11px] italic">
-                <tr>
-                  <th className="px-6 py-4 tracking-widest sticky left-0 z-20 bg-slate-900/95 backdrop-blur-sm border-r border-white/5 w-[140px]">Logic Engine</th>
-                  <th className="px-6 py-4 tracking-widest text-rose-500">UPPER</th>
-                  <th className="px-6 py-4 tracking-widest text-amber-500">FARE Value</th>
-                  <th className="px-6 py-4 tracking-widest text-emerald-500">LOWER</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-white/5">
-                {[
-                  { name: 'HYBRID TOTAL', val: stats.model.weighted, u: stats.model.upper, l: stats.model.lower, active: true },
-                  { name: 'DECAYING SLOPE', val: stats.model.decaying, u: stats.model.decaying * Math.exp(0.5), l: stats.model.decaying * Math.exp(-0.5) },
-                  { name: 'CYCLE WAVE', val: stats.model.cycle, u: stats.model.cycle * Math.exp(0.5), l: stats.model.cycle * Math.exp(-0.5) },
-                  { name: 'STANDARD LAW', val: stats.model.standard, u: stats.model.standard * Math.exp(0.5), l: stats.model.standard * Math.exp(-0.5) },
-                ].map((row, i) => (
-                  <tr key={i} className={`${row.active ? 'bg-amber-500/[0.03]' : ''} hover:bg-white/[0.02]`}>
-                    <td className={`px-6 py-5 sticky left-0 z-10 border-r border-white/5 ${row.active ? 'bg-[#1a1c22]' : 'bg-slate-950'}`}>
-                      <span className={`font-black italic block ${row.active ? 'text-amber-400' : 'text-slate-400'}`}>{row.name}</span>
-                    </td>
-                    <td className="px-6 py-5">
-                      <p className="mono font-bold italic text-rose-500 text-nowrap"><span className="opacity-60 text-[0.85em]">$</span><Space />{Math.round(row.u).toLocaleString()}</p>
-                      {renderKrw(row.u)}
-                    </td>
-                    <td className="px-6 py-5">
-                      <p className="mono font-black italic text-amber-500 text-sm text-nowrap"><span className="opacity-60 text-[0.85em]">$</span><Space />{Math.round(row.val).toLocaleString()}</p>
-                      {renderKrw(row.val)}
-                    </td>
-                    <td className="px-6 py-5">
-                      <p className="mono font-bold italic text-emerald-500 text-nowrap"><span className="opacity-60 text-[0.85em]">$</span><Space />{Math.round(row.l).toLocaleString()}</p>
-                      {renderKrw(row.l)}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </section>
 
-        <section className="bg-slate-900/40 rounded-3xl border border-white/5 overflow-hidden mb-4 text-left">
-          <div className="px-6 py-4 bg-white/5 border-b border-white/5">
-            <h4 className="text-xs font-black tracking-widest text-emerald-500 uppercase italic">장기 예측 가격</h4>
+          <div className="bg-slate-900/40 rounded-3xl border border-white/5 overflow-hidden">
+            <div className="px-6 py-4 border-b border-white/5"><h4 className="text-[10px] font-black tracking-widest text-emerald-500 uppercase italic">Growth Projection</h4></div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-[11px] table-fixed min-w-[500px]">
+                <thead className="bg-black/20 text-slate-600 font-black uppercase text-[9px] italic">
+                  <tr><th className="px-6 py-4 text-left">Target</th><th className="px-6 py-4 text-right">Peak</th><th className="px-6 py-4 text-right">Fair</th><th className="px-6 py-4 text-right">Bottom</th></tr>
+                </thead>
+                <tbody className="divide-y divide-white/5">
+                  {projections.map((p, i) => (
+                    <tr key={i} className="hover:bg-white/[0.02]">
+                      <td className="px-6 py-6 font-black italic text-slate-400">{p.label} ('{p.date.slice(2,4)})</td>
+                      <td className="px-6 py-6 text-right">{renderPriceWithKrw(p.upper, "text-rose-500")}</td>
+                      <td className="px-6 py-6 text-right">{renderPriceWithKrw(p.weighted, "text-amber-500 font-black")}</td>
+                      <td className="px-6 py-6 text-right">{renderPriceWithKrw(p.lower, "text-emerald-500")}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
-          <div className="overflow-x-auto custom-scrollbar">
-            <table className="w-full text-left min-w-[600px] text-xs table-fixed">
-              <thead className="bg-black/20 text-slate-500 font-black uppercase text-[11px] italic">
-                <tr>
-                  <th className="px-6 py-4 tracking-widest sticky left-0 z-20 bg-slate-900/95 backdrop-blur-sm border-r border-white/5 w-[140px]">Period</th>
-                  <th className="px-6 py-4 tracking-widest text-rose-500">Peak</th>
-                  <th className="px-6 py-4 tracking-widest text-amber-500">Fair</th>
-                  <th className="px-6 py-4 tracking-widest text-emerald-500">Bottom</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-white/5">
-                {projections.map((proj, i) => (
-                  <tr key={i} className="hover:bg-white/[0.02]">
-                    <td className="px-6 py-5 sticky left-0 z-10 bg-slate-950 border-r border-white/5">
-                      <span className="font-black italic text-slate-300 block text-nowrap">{proj.label}</span>
-                      <span className="text-[10px] text-slate-600 mono font-bold">{proj.date}</span>
-                    </td>
-                    <td className="px-6 py-5">
-                      <p className="mono font-bold italic text-rose-500 text-nowrap"><span className="opacity-60 text-[0.85em]">$</span><Space />{Math.round(proj.upper).toLocaleString()}</p>
-                      {renderKrw(proj.upper)}
-                    </td>
-                    <td className="px-6 py-5">
-                      <p className="mono font-black italic text-amber-500 text-sm text-nowrap"><span className="opacity-60 text-[0.85em]">$</span><Space />{Math.round(proj.weighted).toLocaleString()}</p>
-                      {renderKrw(proj.weighted)}
-                    </td>
-                    <td className="px-6 py-5">
-                      <p className="mono font-bold italic text-emerald-500 text-nowrap"><span className="opacity-60 text-[0.85em]">$</span><Space />{Math.round(proj.lower).toLocaleString()}</p>
-                      {renderKrw(proj.lower)}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </section>
+        </div>
       </main>
 
-      <footer className="py-6 text-center opacity-30">
-        <p className="text-[11px] font-black uppercase tracking-[0.2em] text-slate-500 px-8">Mathematics is the only objective compass.</p>
-      </footer>
+      <footer className="py-12 text-center opacity-20"><p className="text-[10px] font-black uppercase tracking-[0.4em] text-slate-500 italic">Statistical Truth over Emotional Noise.</p></footer>
     </div>
   );
 };
