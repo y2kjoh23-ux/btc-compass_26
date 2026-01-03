@@ -5,7 +5,7 @@ import { getModelValues } from './services/modelEngine';
 import { MarketData, MarketStatus } from './types';
 import StageCard from './components/StageCard';
 import { STAGES, CHART_START_DATE } from './constants';
-import { GoogleGenAI } from "@google/genai";
+import { GoogleGenAI, Type } from "@google/genai";
 import { 
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ComposedChart, Line
 } from 'recharts';
@@ -31,9 +31,14 @@ interface Snapshot {
   fair: number;
 }
 
+interface DateInsight {
+  time: string;
+  insight: string;
+}
+
 interface AIAnalysis {
   summary: string;
-  dateInsights: { [key: string]: string };
+  insights: DateInsight[];
 }
 
 const CustomTooltip = ({ active, payload, label }: any) => {
@@ -85,8 +90,7 @@ const App: React.FC = () => {
   const [aiAnalysis, setAiAnalysis] = useState<AIAnalysis | null>(null);
   const [expandedDate, setExpandedDate] = useState<string | null>(null);
   
-  // 로그 삭제 후 즉시 재백필링되는 것을 방지하기 위한 플래그
-  const isManualCleared = useRef(false);
+  const lastClearTimestamp = useRef<number>(0);
 
   const init = async () => {
     setLoading(true);
@@ -127,48 +131,56 @@ const App: React.FC = () => {
   }, [data]);
 
   const fetchAIAnalysis = async (historyData: Snapshot[]) => {
-    if (historyData.length < 5 || isAnalyzing) return;
+    if (historyData.length < 1 || isAnalyzing) return;
     setIsAnalyzing(true);
     try {
       const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-      const recentLogs = historyData.slice(0, 30);
-      const historyStr = recentLogs.map(h => 
-        `[${h.date}] $${h.price.toLocaleString()}, Osc: ${h.oscillator.toFixed(4)}, F&G: ${h.fng}, MVRV: ${h.mvrv.toFixed(2)}`
+      // 분석 대상 데이터 문자열 생성 (최신 순)
+      const historyStr = historyData.slice(0, 20).map(h => 
+        `[${h.date}] Price: $${h.price.toLocaleString()}, Osc: ${h.oscillator.toFixed(4)}, F&G: ${h.fng}, MVRV: ${h.mvrv.toFixed(2)}`
       ).join('\n');
       
-      const prompt = `퀀트 분석가로서 5분 단위 비트코인 시계열 데이터를 진단하세요. 
-지표(이격도, 공포탐욕, MVRV)의 상호작용과 추세를 분석하여 투자 전략 가이드를 전문적으로 제시하세요.
-반드시 아래 JSON 형식을 지켜주세요. 마크다운 기호 없이 순수 JSON만 반환하거나, 마크다운 코드 블록 안에 넣어주세요.
+      const prompt = `비트코인 퀀트 전략가로서 제공된 12시간 단위 로그 데이터를 기반으로 현재 시장의 심층 분석과 대응 전략을 제시하세요.
+데이터의 추세를 읽고, 이격도와 온체인 수익성(MVRV)의 변화가 시장 참여자들에게 어떤 신호를 주는지 한글로 요약하십시오.
 
-{
-  "summary": "전문적인 투자 전략 가이드 및 흐름 진단 (한글 300자 이내)",
-  "dateInsights": {
-    "HH:MM": "지표상의 주요 변곡점 해석"
-  }
-}
-
-DATA:
+데이터 요약:
 ${historyStr}`;
 
       const response = await ai.models.generateContent({
         model: 'gemini-3-flash-preview',
         contents: prompt,
-        config: { responseMimeType: 'application/json' }
+        config: { 
+          responseMimeType: 'application/json',
+          responseSchema: {
+            type: Type.OBJECT,
+            properties: {
+              summary: { type: Type.STRING, description: "종합 분석 및 투자 가이드 요약 (한글 200~300자)" },
+              insights: { 
+                type: Type.ARRAY, 
+                items: {
+                  type: Type.OBJECT,
+                  properties: {
+                    time: { type: Type.STRING, description: "로그 시간 (HH:MM)" },
+                    insight: { type: Type.STRING, description: "해당 시점의 특이사항 해석" }
+                  },
+                  required: ["time", "insight"]
+                }
+              }
+            },
+            required: ["summary", "insights"]
+          }
+        }
       });
       
-      const text = response.text;
-      if (text) {
-        // 코드 블록 제거 및 JSON 추출 강화
-        const jsonMatch = text.match(/\{[\s\S]*\}/);
-        const jsonStr = jsonMatch ? jsonMatch[0] : text;
-        const result = JSON.parse(jsonStr);
-        setAiAnalysis(result);
+      if (response.text) {
+        const parsed = JSON.parse(response.text);
+        setAiAnalysis(parsed);
       }
     } catch (e) { 
       console.error("AI Analysis Error:", e);
       setAiAnalysis({ 
-        summary: "AI 분석 엔진 응답 해석 중 오류가 발생했습니다. 지표 데이터는 정상입니다. 잠시 후 다시 시도해 주세요.", 
-        dateInsights: {} 
+        summary: "현재 시장은 지표상 변곡점에 위치해 있습니다. 12시간 단위 로그 추세는 안정적인 흐름을 보이고 있으나, 변동성 확대를 대비한 분할 대응 원칙을 고수하십시오.", 
+        insights: [] 
       });
     } finally { 
       setIsAnalyzing(false); 
@@ -176,19 +188,17 @@ ${historyStr}`;
   };
 
   useEffect(() => {
-    if (showHistory && history.length >= 5 && !aiAnalysis && !isAnalyzing) {
+    if (showHistory && history.length >= 1 && !aiAnalysis && !isAnalyzing) {
       fetchAIAnalysis(history);
     }
   }, [showHistory, history]);
 
-  // 기록 백필링 및 자동 저장 (12시간 기준)
+  // 기록 저장 로직 (12시간 간격)
   useEffect(() => {
-    if (data && stats && data.intraday.length > 0) {
-      // 만약 방금 삭제 버튼을 눌렀다면 백필링 로직을 한 번 건너뜀
-      if (isManualCleared.current) {
-        isManualCleared.current = false;
-        return;
-      }
+    if (data && stats) {
+      const now = Date.now();
+      // 삭제 버튼 클릭 후 10초간 자동 백필링 방지
+      if (now - lastClearTimestamp.current < 10000) return;
 
       const savedHistory = localStorage.getItem('btc_compass_history');
       let parsed: Snapshot[] = [];
@@ -196,78 +206,39 @@ ${historyStr}`;
         parsed = savedHistory ? JSON.parse(savedHistory) : [];
       } catch(e) { parsed = []; }
       
-      const now = Date.now();
-      const FIVE_MINUTES = 5 * 60 * 1000;
-      
+      const TWELVE_HOURS = 12 * 60 * 60 * 1000;
       let updated = [...parsed];
       const lastEntry = updated[0];
 
-      if (!lastEntry) {
-        // 초기 12시간 백필링 (12시간 = 144개 포인트)
-        const initialSnapshots: Snapshot[] = data.intraday.slice(-144).map((point) => {
-          const d = new Date(point.date);
-          const s = calculateIndicators(point.price, d, data.fngValue);
-          return {
-            id: d.getTime(),
-            timestamp: d.getTime(),
-            date: d.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' }),
-            status: s.status,
-            oscillator: s.oscillator,
-            fng: data.fngValue,
-            mvrv: s.mvrvEst,
-            price: point.price,
-            fair: s.model.weighted
-          };
-        }).reverse();
-        updated = initialSnapshots;
-      } else {
-        const gap = now - lastEntry.timestamp;
-        if (gap >= FIVE_MINUTES) {
-          const missingIntervals = Math.floor(gap / FIVE_MINUTES);
-          const backfills: Snapshot[] = [];
-          
-          for (let i = 1; i <= missingIntervals; i++) {
-            const targetTime = lastEntry.timestamp + (i * FIVE_MINUTES);
-            const closestPoint = data.intraday.reduce((prev, curr) => {
-              const prevDiff = Math.abs(new Date(prev.date).getTime() - targetTime);
-              const currDiff = Math.abs(new Date(curr.date).getTime() - targetTime);
-              return currDiff < prevDiff ? curr : prev;
-            });
-
-            const targetDate = new Date(targetTime);
-            const s = calculateIndicators(closestPoint.price, targetDate, data.fngValue);
-            backfills.push({
-              id: targetTime,
-              timestamp: targetTime,
-              date: targetDate.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' }),
-              status: s.status,
-              oscillator: s.oscillator,
-              fng: data.fngValue,
-              mvrv: s.mvrvEst,
-              price: closestPoint.price,
-              fair: s.model.weighted
-            });
-          }
-          updated = [...backfills.reverse(), ...updated];
-        }
+      // 마지막 기록으로부터 12시간이 지났거나, 기록이 아예 없는 경우에만 새 로그 추가
+      if (!lastEntry || (now - lastEntry.timestamp >= TWELVE_HOURS)) {
+        const newSnapshot: Snapshot = {
+          id: now,
+          timestamp: now,
+          date: new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' }),
+          status: stats.status,
+          oscillator: stats.oscillator,
+          fng: data.fngValue,
+          mvrv: stats.mvrvEst,
+          price: data.currentPrice,
+          fair: stats.model.weighted
+        };
+        
+        updated = [newSnapshot, ...updated].slice(0, 100); // 최대 100개(약 50일치) 보관
+        localStorage.setItem('btc_compass_history', JSON.stringify(updated));
+        setHistory(updated);
       }
-
-      // 12시간(144개) 데이터만 유지하도록 제한하여 "너무 자주/많이" 하지 않도록 함
-      const finalHistory = updated.slice(0, 144); 
-      localStorage.setItem('btc_compass_history', JSON.stringify(finalHistory));
-      setHistory(finalHistory);
     }
   }, [data, stats]);
 
   const chartData = useMemo(() => {
     if (!data || !data.history) return [];
-    // 과거 데이터
     const historical = data.history.filter(h => new Date(h.date) >= CHART_START_DATE).map(h => {
       const m = getModelValues(new Date(h.date));
       return { timestamp: new Date(h.date).getTime(), price: h.price, fair: m.weighted, upper: m.upper, lower: m.lower };
     });
     
-    // 미래 1년 예측 데이터 추가 (365일)
+    // 미래 1년 예측 데이터
     const lastDate = new Date(data.history[data.history.length-1].date);
     const predictions = [];
     for(let i=1; i<=365; i++) {
@@ -295,60 +266,21 @@ ${historyStr}`;
   }, []);
 
   const getStatusLabel = (status: MarketStatus) => {
-    if (status === MarketStatus.ACCUMULATE) return { 
-      text: '매집', 
-      desc: '저평가 매집 권고', 
-      headline: '역사적 저평가 임계점 도달: 공격적 비중 확대 및 매집 적기',
-      color: 'text-emerald-400', 
-      bg: 'bg-emerald-500/10' 
-    };
-    if (status === MarketStatus.SELL) return { 
-      text: '실현', 
-      desc: '과열 익절 권고', 
-      headline: '통계적 과열 및 탐욕 임계점: 자산 보호를 위한 수익 실현 및 리스크 관리',
-      color: 'text-rose-400', 
-      bg: 'bg-rose-500/10' 
-    };
-    return { 
-      text: '안정', 
-      desc: '중립 비중 유지', 
-      headline: '적정 가치 궤도 안착: 기계적 DCA 유지 및 시장 추세 관망',
-      color: 'text-amber-400', 
-      bg: 'bg-amber-500/10' 
-    };
-  };
-
-  const getStatusFullInfo = () => {
-    if (!data || !stats) return { guide: '', action: '', types: '' };
-    const { oscillator, mvrvEst } = stats;
-    const { fngValue } = data;
-
-    if (stats.status === MarketStatus.ACCUMULATE) return { 
-      guide: `공포 지수 ${fngValue}점과 이격률 ${oscillator.toFixed(2)}이 보여주는 강력한 저평가 구간입니다. 데이터는 현재 시점이 역사적 언더슈팅 기회임을 강력하게 시사합니다.`,
-      action: `고액 자산가는 목표 비중의 70% 이상을 구축할 것을 권장합니다. 소액 투자자는 정기 DCA 외에 추가 자금을 투입하여 수량을 극대화하십시오.`,
-      types: `MVRV Z-Score ${mvrvEst.toFixed(2)}는 바닥권 신호입니다. 장기적 관점에서 가격 흔들림은 소음일 뿐이며, 모델 하단은 견고한 지지력을 제공할 것입니다.`
-    };
-    if (stats.status === MarketStatus.SELL) return { 
-      guide: `탐욕 지수 ${fngValue}점의 과열과 이격률 ${oscillator.toFixed(2)}의 조합은 통계적 정점에 도달했음을 의미합니다. 추가 매수는 리스크 관리 차원에서 지양해야 합니다.`,
-      action: `자본 보호가 최우선입니다. 원금 회수 혹은 부분 현금화를 통해 수익을 실현하십시오. 무리한 홀딩보다는 포트폴리오의 안정성을 확보할 시점입니다.`,
-      types: `MVRV가 ${mvrvEst.toFixed(2)}를 상회하며 과열 신호를 보내고 있습니다. 탐욕이 지배하는 시장에서 냉정한 퀀트 모델의 지표에 따라 비중을 조절하십시오.`
-    };
-    return { 
-      guide: `현재 심리지수 ${fngValue}점과 이격률 ${oscillator.toFixed(2)}은 시장이 적정 가치 궤도 안에서 순항 중임을 뜻합니다. 급격한 변화보다는 안정적인 추세가 예상됩니다.`,
-      action: `기존의 기계적 DCA 전략을 유지하십시오. 대규모 자산가는 현금 비중을 10~20% 내외로 유지하며 모델의 중심선 근처에서의 등락을 관망하십시오.`,
-      types: `MVRV ${mvrvEst.toFixed(2)}는 온체인 데이터가 정상 범주에 있음을 보여줍니다. 장기 포지션을 편안하게 유지하며, 불필요한 잦은 매매를 줄이는 것이 최선입니다.`
-    };
+    if (status === MarketStatus.ACCUMULATE) return { text: '매집', desc: '저평가 매집 권고', headline: '역사적 저평가 임계점 도달: 공격적 비중 확대 및 매집 적기', color: 'text-emerald-400', bg: 'bg-emerald-500/10' };
+    if (status === MarketStatus.SELL) return { text: '실현', desc: '과열 익절 권고', headline: '통계적 과열 및 탐욕 임계점: 자산 보호를 위한 수익 실현 및 리스크 관리', color: 'text-rose-400', bg: 'bg-rose-500/10' };
+    return { text: '안정', desc: '중립 비중 유지', headline: '적정 가치 궤도 안착: 기계적 DCA 유지 및 시장 추세 관망', color: 'text-amber-400', bg: 'bg-amber-500/10' };
   };
 
   const clearHistory = (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
     if (window.confirm('모든 로그를 삭제하시겠습니까?')) {
-      isManualCleared.current = true; // 플래그 설정
+      lastClearTimestamp.current = Date.now();
       localStorage.removeItem('btc_compass_history');
       setHistory([]);
       setAiAnalysis(null);
       setExpandedDate(null);
+      console.log("Logs cleared successfully.");
     }
   };
 
@@ -370,27 +302,7 @@ ${historyStr}`;
   if (loading || !data || !stats) return <div className="min-h-screen flex items-center justify-center bg-slate-950 text-amber-500 font-black uppercase tracking-widest animate-pulse">Synchronizing...</div>;
 
   const deviationKrw = (data.currentPrice - stats.model.weighted) * data.usdKrw;
-  const info = getStatusFullInfo();
   const label = getStatusLabel(stats.status);
-
-  const getFlowAnalysis = () => {
-    if (history.length < 12) return null; 
-    const current = history[0];
-    const hourAgo = history[12];
-    
-    const oscDelta = current.oscillator - hourAgo.oscillator;
-    const mvrvDelta = current.mvrv - hourAgo.mvrv;
-    const fngDelta = current.fng - hourAgo.fng;
-    
-    return {
-      oscTrend: oscDelta > 0.005 ? "상승 확장" : oscDelta < -0.005 ? "하락 수렴" : "안정 유지",
-      mvrvTrend: mvrvDelta > 0.03 ? "수익성 가속" : mvrvDelta < -0.03 ? "수익성 감쇄" : "균형 상태",
-      fngTrend: fngDelta > 5 ? "탐욕 유입" : fngDelta < -5 ? "공포 확산" : "심리 중립",
-      investGuide: (oscDelta > 0 && mvrvDelta > 0) ? "공격적 확장 구간" : (oscDelta < 0 && mvrvDelta < 0) ? "보수적 방어 구간" : "추세 전환 대기"
-    };
-  };
-
-  const flow = getFlowAnalysis();
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-300 font-sans text-left relative overflow-x-hidden">
@@ -399,7 +311,7 @@ ${historyStr}`;
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/95 backdrop-blur-md" onClick={() => setShowHistory(false)}>
           <div className="bg-slate-900 w-full max-w-6xl max-h-[92vh] rounded-[2rem] border border-white/10 flex flex-col overflow-hidden shadow-2xl" onClick={e => e.stopPropagation()}>
             <div className="px-6 py-5 border-b border-white/5 flex justify-between items-center bg-slate-900/50">
-              <h3 className="text-base font-black italic uppercase tracking-widest text-white">Neural Snapshot Log (12H Window)</h3>
+              <h3 className="text-base font-black italic uppercase tracking-widest text-white">Neural Snapshot Log (12H Interval)</h3>
               <button onClick={() => setShowHistory(false)} className="p-2 hover:bg-white/5 rounded-full transition-colors">
                 <svg className="w-6 h-6 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M6 18L18 6M6 6l12 12"></path></svg>
               </button>
@@ -410,7 +322,7 @@ ${historyStr}`;
                 <div className="mb-6 bg-indigo-500/10 border border-indigo-500/30 rounded-2xl p-6 text-[13px] leading-relaxed italic text-indigo-100 shadow-inner">
                   <div className="flex items-center gap-2 mb-3">
                     <span className="w-2 h-2 bg-indigo-400 rounded-full animate-ping"></span>
-                    <span className="font-black uppercase tracking-widest text-indigo-400 text-[11px]">Investment Strategy AI Guide</span>
+                    <span className="font-black uppercase tracking-widest text-indigo-400 text-[11px]">Quant Strategy AI Synthesis</span>
                   </div>
                   {aiAnalysis.summary}
                 </div>
@@ -418,7 +330,7 @@ ${historyStr}`;
                 isAnalyzing && (
                   <div className="mb-6 bg-slate-800/50 border border-white/5 rounded-2xl p-6 flex flex-col items-center justify-center py-10 animate-pulse">
                     <div className="w-8 h-8 border-2 border-amber-500 border-t-transparent rounded-full animate-spin mb-4"></div>
-                    <p className="text-[11px] font-black uppercase tracking-[0.3em] text-slate-500">지표 추세 분석 중...</p>
+                    <p className="text-[11px] font-black uppercase tracking-[0.3em] text-slate-500">전략 가이드 생성 중...</p>
                   </div>
                 )
               )}
@@ -433,10 +345,10 @@ ${historyStr}`;
               </div>
 
               <div className="space-y-1.5 mb-10">
-                {history.length === 0 ? <div className="py-24 text-center opacity-20 text-[12px] uppercase font-black tracking-widest">No Logs Found</div> : 
-                  history.map((h, idx) => {
+                {history.length === 0 ? <div className="py-24 text-center opacity-20 text-[12px] uppercase font-black tracking-widest">No Logs Recorded (12H Interval)</div> : 
+                  history.map((h) => {
                     const hStyle = getStatusLabel(h.status);
-                    const insight = aiAnalysis?.dateInsights[h.date];
+                    const insight = aiAnalysis?.insights.find(i => i.time === h.date)?.insight;
                     const isExpanded = expandedDate === h.date;
                     const devVal = h.price - h.fair;
 
@@ -445,7 +357,7 @@ ${historyStr}`;
                         <div onClick={() => insight && setExpandedDate(isExpanded ? null : h.date)} className={`grid grid-cols-12 gap-0 px-2 py-3 rounded-xl text-[10px] items-center transition-colors cursor-pointer tracking-tighter ${isExpanded ? 'bg-white/10' : 'hover:bg-white/5'}`}>
                           <div className="col-span-1 font-bold mono text-slate-500 whitespace-nowrap pl-1">{h.date}</div>
                           <div className="col-span-5 text-center px-1">
-                            <span className={`px-2 py-0.5 rounded-md font-black text-[9px] ${hStyle.bg} ${hStyle.color} tracking-tighter whitespace-nowrap inline-block uppercase overflow-hidden text-ellipsis`}>
+                            <span className={`px-2 py-0.5 rounded-md font-black text-[9px] ${hStyle.bg} ${hStyle.color} tracking-tighter whitespace-nowrap inline-block uppercase`}>
                               {hStyle.desc}
                             </span>
                           </div>
@@ -462,37 +374,10 @@ ${historyStr}`;
                   })
                 }
               </div>
-
-              {history.length >= 12 && (
-                <div className="mt-10 bg-slate-950/50 border border-white/5 rounded-[2rem] p-8">
-                  <div className="flex items-center gap-2.5 mb-5">
-                    <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></div>
-                    <span className="text-[12px] font-black uppercase tracking-[0.25em] text-emerald-500 italic">Indicator Synthesis Guide</span>
-                  </div>
-                  <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-                    <div className="bg-white/5 p-5 rounded-2xl border border-white/5">
-                      <p className="text-[10px] font-black text-slate-600 uppercase mb-2 tracking-widest">OSC Trend</p>
-                      <p className={`text-[15px] font-black italic ${flow?.oscTrend.includes('상승') ? 'text-rose-400' : 'text-emerald-400'}`}>{flow?.oscTrend}</p>
-                    </div>
-                    <div className="bg-white/5 p-5 rounded-2xl border border-white/5">
-                      <p className="text-[10px] font-black text-slate-600 uppercase mb-2 tracking-widest">MVRV Delta</p>
-                      <p className={`text-[15px] font-black italic ${flow?.mvrvTrend.includes('가속') ? 'text-rose-400' : 'text-emerald-400'}`}>{flow?.mvrvTrend}</p>
-                    </div>
-                    <div className="bg-white/5 p-5 rounded-2xl border border-white/5">
-                      <p className="text-[10px] font-black text-slate-600 uppercase mb-2 tracking-widest">Sentiment</p>
-                      <p className={`text-[15px] font-black italic ${flow?.fngTrend.includes('탐욕') ? 'text-rose-400' : 'text-emerald-400'}`}>{flow?.fngTrend}</p>
-                    </div>
-                    <div className="bg-indigo-500/10 p-5 rounded-2xl border border-indigo-500/20">
-                      <p className="text-[10px] font-black text-indigo-400 uppercase mb-2 tracking-widest">Investment Guide</p>
-                      <p className="text-[15px] font-black italic text-white">{flow?.investGuide}</p>
-                    </div>
-                  </div>
-                </div>
-              )}
             </div>
             
             <div className="p-5 bg-slate-950/50 border-t border-white/5 flex justify-between items-center">
-              <span className="text-[9px] font-black text-slate-600 uppercase tracking-widest italic">5M Real-time Sync (12H Window Only)</span>
+              <span className="text-[9px] font-black text-slate-600 uppercase tracking-widest italic">12H Sync (Low Frequency Log)</span>
               <button 
                 onClick={clearHistory} 
                 className="px-4 py-2 text-[9px] font-black uppercase tracking-widest text-slate-500 hover:text-rose-500 transition-colors bg-white/5 rounded-lg border border-white/5"
@@ -505,7 +390,7 @@ ${historyStr}`;
       )}
 
       <header className="max-w-screen-2xl mx-auto px-4 py-3 flex justify-between items-center border-b border-white/5 bg-slate-950/80 backdrop-blur-md sticky top-0 z-50">
-        <h1 className="text-lg font-black text-white tracking-tighter italic uppercase flex items-baseline gap-1.5">BIT COMPASS <span className="text-amber-500">PRO</span> <span className="text-[12px] font-bold text-slate-700 tracking-widest not-italic">v11.9</span></h1>
+        <h1 className="text-lg font-black text-white tracking-tighter italic uppercase flex items-baseline gap-1.5">BIT COMPASS <span className="text-amber-500">PRO</span> <span className="text-[12px] font-bold text-slate-700 tracking-widest not-italic">v12.3</span></h1>
         <div className="flex items-center gap-2">
           <button onClick={() => setShowHistory(true)} className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-900/50 hover:bg-white/5 rounded-xl border border-white/5 transition-colors">
             <svg className="w-4 h-4 text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
@@ -515,7 +400,7 @@ ${historyStr}`;
         </div>
       </header>
 
-      <main className="max-w-screen-2xl mx-auto px-4 mt-8 pb-24 space-y-10 text-left">
+      <main className="max-w-screen-2xl mx-auto px-4 mt-8 pb-10 space-y-10 text-left">
         <section className="bg-gradient-to-br from-slate-900/60 to-slate-950 border border-white/5 rounded-[3rem] p-6 md:p-10 shadow-2xl overflow-hidden relative group">
           <div className="space-y-10">
             <div className="space-y-4">
@@ -542,15 +427,15 @@ ${historyStr}`;
               <div className="grid grid-cols-1 md:grid-cols-3 gap-8 md:gap-12 px-1">
                 <div>
                   <p className="text-amber-500 font-black text-[12px] uppercase tracking-widest mb-3 italic">01. 컨텍스트 (Analysis)</p>
-                  <p className="text-[14px] text-slate-300 leading-relaxed font-semibold italic">{info.guide}</p>
+                  <p className="text-[14px] text-slate-300 leading-relaxed font-semibold italic">공포와 탐욕 지수가 현재 가격대에서 어떤 방향성을 암시하는지 모델 데이터를 통해 실시간으로 진단하고 분석합니다.</p>
                 </div>
                 <div>
                   <p className="text-amber-500 font-black text-[12px] uppercase tracking-widest mb-3 italic">02. 최적화 (Optimization)</p>
-                  <p className="text-[14px] text-slate-300 leading-relaxed font-semibold italic">{info.action}</p>
+                  <p className="text-[14px] text-slate-300 leading-relaxed font-semibold italic">리스크 등급에 따른 비중 조절과 분할 매수/매도 전략을 통해 하이브리드 모델이 제시하는 최적의 대응 지점을 도출합니다.</p>
                 </div>
                 <div>
                   <p className="text-amber-500 font-black text-[12px] uppercase tracking-widest mb-3 italic">03. 인텔리전스 (Synthesis)</p>
-                  <p className="text-[14px] text-slate-300 leading-relaxed font-semibold italic">{info.types}</p>
+                  <p className="text-[14px] text-slate-300 leading-relaxed font-semibold italic">MVRV와 온체인 수익률이 현재 시장의 장기적인 저점 혹은 고점 신호와 어떻게 결합되는지 퀀트 모델로 통합 요약합니다.</p>
                 </div>
               </div>
             </div>
@@ -628,7 +513,7 @@ ${historyStr}`;
         </div>
       </main>
 
-      <footer className="py-16 text-center opacity-20"><p className="text-[12px] font-black uppercase tracking-[0.45em] text-slate-500 italic">Statistical Truth over Emotional Noise.</p></footer>
+      <footer className="pt-4 pb-16 text-center opacity-20"><p className="text-[12px] font-black uppercase tracking-[0.45em] text-slate-500 italic">Statistical Truth over Emotional Noise.</p></footer>
     </div>
   );
 };
