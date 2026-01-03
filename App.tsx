@@ -22,7 +22,7 @@ const CustomTooltip = ({ active, payload, label }: any) => {
     const sortedItems = [...payload].sort((a, b) => (b.value || 0) - (a.value || 0));
     return (
       <div className="bg-white/95 backdrop-blur-md border border-slate-300 p-3 rounded-xl shadow-2xl text-slate-800 min-w-[180px]">
-        <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest mb-2 border-b border-slate-200 pb-1.5 mono">
+        <p className="text-xs font-black text-slate-500 uppercase tracking-widest mb-2 border-b border-slate-200 pb-1.5 mono">
           {dateStr}
         </p>
         <div className="space-y-1.5">
@@ -37,9 +37,9 @@ const CustomTooltip = ({ active, payload, label }: any) => {
               <div key={index} className="flex justify-between items-center">
                 <div className="flex items-center gap-1.5">
                   <div className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: markerColor }}></div>
-                  <span className="text-[10px] font-bold text-slate-600">{item.name}</span>
+                  <span className="text-xs font-bold text-slate-600">{item.name}</span>
                 </div>
-                <span className="text-[11px] font-black mono text-slate-900">
+                <span className="text-xs font-black mono text-slate-900">
                   {item.value ? `$${Math.round(item.value).toLocaleString()}` : 'PREDICT'}
                 </span>
               </div>
@@ -125,7 +125,7 @@ const App: React.FC = () => {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center bg-slate-950 text-white">
         <div className="w-12 h-12 border-2 border-amber-500 border-t-transparent rounded-full animate-spin mb-4"></div>
-        <p className="text-[10px] font-black tracking-widest text-amber-500 uppercase">Synchronizing Quant Engine...</p>
+        <p className="text-xs font-black tracking-widest text-amber-500 uppercase">Synchronizing Quant Engine...</p>
       </div>
     );
   }
@@ -139,7 +139,7 @@ const App: React.FC = () => {
       bg: 'from-emerald-950/20', 
       border: 'border-emerald-500/20', 
       label: '가치 매집 국면',
-      guide: `<b>포트폴리오 진단:</b> 현재 심리지수가 ${fngValue}점으로 극도의 공포 단계에 있으며, 이격률(${oscillator.toFixed(2)})이 모델 하단에 위치합니다. 이는 데이터 관점에서 매우 희귀한 '언더슈팅' 기회입니다.`,
+      guide: `<b>포트폴리오 진단:</b> 현재 심리지수가 ${fngValue}점으로 공포 단계에 있으며, 이격률(${oscillator.toFixed(2)})이 모델 하단에 위치합니다. 이는 데이터 관점에서 매우 희귀한 '언더슈팅' 기회입니다.`,
       action: `<b>자산 규모별 운용:</b> 고액 자산가는 분할 매수를 통해 포지션의 70% 이상을 구축하십시오. 소액 투자자는 정기 DCA 외에 추가 여유 자금을 투입하여 수량을 극대화할 시점입니다.`,
       types: `<b>온체인 인텔리전스:</b> MVRV Z-Score가 ${mvrvEst.toFixed(2)}로 바닥권에 머물고 있습니다. 장기 홀더들이 매집을 시작하는 구간이므로, 단기 가격 흔들림에 연연하지 말고 목표 비중을 채우십시오.`
     };
@@ -166,155 +166,129 @@ const App: React.FC = () => {
   const style = getStatusStyle();
   const deviationKrw = (data.currentPrice - stats.model.weighted) * data.usdKrw;
   const deviationSign = deviationKrw >= 0 ? '+' : '-';
-  const deviationDisplay = `(${deviationSign} ₩ ${Math.abs(Math.round(deviationKrw)).toLocaleString()})`;
+  const deviationDisplay = `(${deviationSign} ₩${Math.abs(Math.round(deviationKrw)).toLocaleString()})`;
 
   const renderKrw = (usd: number) => (
-    <p className="text-[10px] text-slate-500 font-bold opacity-70 mt-0.5 mono">
-      ₩ {Math.round(usd * data.usdKrw).toLocaleString()}
+    <p className="text-xs text-slate-500 font-bold opacity-70 mt-0.5 mono">
+      ₩{Math.round(usd * data.usdKrw).toLocaleString()}
     </p>
   );
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-300 font-sans text-left">
-      <header className="max-w-screen-2xl mx-auto px-4 md:px-8 py-6 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 border-b border-white/5">
+      <header className="max-w-screen-2xl mx-auto px-4 py-2 flex justify-between items-center border-b border-white/5">
         <div className="text-left">
-          <h1 className="text-xl md:text-2xl font-black text-white tracking-tighter italic uppercase">BIT COMPASS <span className="text-amber-500">PRO</span></h1>
-          <p className="text-[9px] font-bold text-slate-600 uppercase tracking-widest mt-0.5">Maturity Volatility Decay Model v9.5</p>
+          <h1 className="text-xl font-black text-white tracking-tighter italic uppercase flex items-baseline gap-1.5">
+            <span>BIT COMPASS <span className="text-amber-500">PRO</span></span>
+            <span className="text-[11px] font-bold text-slate-600 uppercase tracking-widest not-italic">v9.9</span>
+          </h1>
         </div>
-        <div className="flex items-center gap-4 bg-slate-900/50 p-2 rounded-xl border border-white/5">
-          <div className="text-right px-2">
-            <p className="text-[8px] font-black text-slate-500 uppercase mb-0.5">원화 환율 (Source: Frankfurter)</p>
-            <p className="text-xs font-black text-white mono italic">₩ {data.usdKrw.toLocaleString()}</p>
-          </div>
-          <button onClick={init} className="p-2 hover:bg-white/5 rounded-lg transition-colors">
-            <svg className="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
-          </button>
-        </div>
+        <button onClick={init} className="p-2 bg-slate-900/50 hover:bg-white/5 rounded-xl border border-white/5 transition-colors">
+          <svg className="w-5 h-5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
+        </button>
       </header>
 
-      <main className="max-w-screen-2xl mx-auto px-4 md:px-8 mt-6 pb-20">
-        <section className={`relative rounded-3xl p-6 md:p-8 mb-10 border ${style.border} bg-gradient-to-br ${style.bg} to-slate-950 shadow-2xl overflow-hidden`}>
-          <div className="grid lg:grid-cols-12 gap-8 items-center">
-            <div className="lg:col-span-5 space-y-6 text-left">
-              <div className="space-y-2">
-                <div className="flex items-center gap-2 px-4 py-1.5 bg-black/40 rounded-full border border-white/5 w-fit">
-                   <div className={`w-2 h-2 rounded-full ${style.accent.replace('text', 'bg')} animate-pulse`}></div>
-                   <span className={`text-[11px] font-black uppercase tracking-wider ${style.accent}`}>{style.label}</span>
-                </div>
-                <h2 className="text-4xl md:text-5xl font-black text-white tracking-tighter italic mono">
-                  ${data.currentPrice.toLocaleString()}
-                </h2>
+      <main className="max-w-screen-2xl mx-auto px-4 mt-2 pb-6">
+        <section className={`relative rounded-3xl p-6 mb-8 border ${style.border} bg-gradient-to-br ${style.bg} to-slate-950 shadow-2xl overflow-hidden`}>
+          <div className="flex flex-col gap-6">
+            <div className="space-y-3">
+              <h2 className="text-5xl font-black text-white tracking-tighter italic mono">
+                ${data.currentPrice.toLocaleString()}
+              </h2>
+              <div className="flex flex-col gap-1">
                 <div className="flex items-baseline gap-2">
-                  <p className="text-xl text-slate-400 font-light italic">₩ {Math.round(data.currentPrice * data.usdKrw).toLocaleString()}</p>
-                  <p className={`text-xs font-black mono ${deviationKrw >= 0 ? 'text-rose-500' : 'text-emerald-500'}`}>
+                  <p className="text-2xl text-slate-400 font-light italic">₩{Math.round(data.currentPrice * data.usdKrw).toLocaleString()}</p>
+                  <p className={`text-sm font-black mono ${deviationKrw >= 0 ? 'text-rose-500' : 'text-emerald-400'}`}>
                     {deviationDisplay}
                   </p>
                 </div>
-              </div>
-
-              <div className="p-4 bg-slate-900/60 rounded-2xl border border-white/5">
-                <div className="flex justify-between items-center mb-1">
-                  <span className="text-[9px] font-black text-slate-500 uppercase tracking-widest">통합 리스크 지수</span>
-                  <span className={`text-[12px] font-black mono italic ${style.accent}`}>
-                    {Math.round(stats.riskPercent)}% Risk
-                  </span>
-                </div>
-                <div className="w-full h-1 bg-slate-800 rounded-full overflow-hidden mt-3">
-                  <div className={`h-full ${style.accent.replace('text', 'bg')} opacity-50`} style={{ width: `${stats.riskPercent}%` }}></div>
+                <div className="flex flex-col gap-0.5 mt-2">
+                  <p className="text-xs font-bold text-slate-500 uppercase tracking-widest">환율: ₩{data.usdKrw.toLocaleString()} <span className="opacity-50">(Frankfurter)</span></p>
+                  <p className="text-[11px] font-bold text-slate-600 uppercase tracking-tight">Source: Binance | {data.lastUpdated}</p>
                 </div>
               </div>
             </div>
 
-            <div className="lg:col-span-7">
-              <div className="bg-white/5 backdrop-blur-md p-6 md:p-8 rounded-2xl border border-white/10 text-left space-y-6">
-                <div className="flex items-center gap-3 border-b border-white/5 pb-3">
-                  <span className={`text-2xl ${style.accent} font-serif`}>❝</span>
-                  <h3 className="text-md font-black text-white uppercase italic tracking-tighter">퀀트 통합 전략 가이드</h3>
+            <div className="bg-white/5 backdrop-blur-md p-6 rounded-2xl border border-white/10 space-y-6">
+              <div className="flex items-center gap-3 border-b border-white/5 pb-3">
+                 <div className={`w-2 h-2 rounded-full ${style.accent.replace('text', 'bg')} animate-pulse`}></div>
+                 <span className={`text-[13px] font-black uppercase tracking-wider ${style.accent}`}>{style.label}</span>
+              </div>
+              <div className="grid grid-cols-1 gap-6">
+                <div className="space-y-1">
+                  <p className="text-amber-500 font-black text-xs uppercase tracking-widest mb-1">01. 마켓 컨텍스트 분석</p>
+                  <p className="text-[14px] text-slate-300 leading-relaxed" dangerouslySetInnerHTML={{ __html: style.guide }}></p>
                 </div>
-                <div className="grid md:grid-cols-2 gap-8">
-                  <div className="space-y-2">
-                    <p className="text-amber-500 font-black text-[10px] uppercase tracking-widest mb-1">01. 마켓 컨텍스트 분석</p>
-                    <p className="text-[13px] text-slate-300 leading-relaxed" dangerouslySetInnerHTML={{ __html: style.guide }}></p>
-                  </div>
-                  <div className="space-y-2">
-                    <p className="text-amber-500 font-black text-[10px] uppercase tracking-widest mb-1">02. 포트폴리오 운용 최적화</p>
-                    <p className="text-[13px] text-slate-300 leading-relaxed" dangerouslySetInnerHTML={{ __html: style.action }}></p>
-                  </div>
-                  <div className="space-y-2">
-                    <p className="text-amber-500 font-black text-[10px] uppercase tracking-widest mb-1">03. 투자 유형별 전술</p>
-                    <p className="text-[13px] text-slate-300 leading-relaxed" dangerouslySetInnerHTML={{ __html: style.types }}></p>
-                  </div>
-                  <div className="space-y-2">
-                    <p className="text-amber-500 font-black text-[10px] uppercase tracking-widest mb-1">04. 집행 인텔리전스</p>
-                    <p className="text-[13px] text-slate-300 leading-relaxed">지표들의 유기적 연계를 통해 감정을 배제한 기계적 대응이 수반되어야 합니다. 현재의 이격도는 역사적 평균으로 회귀하려는 성질을 가지고 있습니다.</p>
-                  </div>
+                <div className="space-y-1">
+                  <p className="text-amber-500 font-black text-xs uppercase tracking-widest mb-1">02. 포트폴리오 운용 최적화</p>
+                  <p className="text-[14px] text-slate-300 leading-relaxed" dangerouslySetInnerHTML={{ __html: style.action }}></p>
+                </div>
+                <div className="space-y-1">
+                  <p className="text-amber-500 font-black text-xs uppercase tracking-widest mb-1">03. 투자 유형별 전술</p>
+                  <p className="text-[14px] text-slate-300 leading-relaxed" dangerouslySetInnerHTML={{ __html: style.types }}></p>
                 </div>
               </div>
             </div>
           </div>
         </section>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-12">
+        <div className="grid grid-cols-1 gap-4 mb-8">
           <StageCard 
             title="OSCILLATOR (이격률)" 
             displayValue={`${stats.oscillator >= 0 ? '+' : ''}${stats.oscillator.toFixed(2)}`}
-            subLabel="적정가 대비 로그 괴리도"
+            subLabel=""
             stages={STAGES.OSCILLATOR} 
             currentVal={stats.oscillator} 
           />
           <StageCard 
             title="SENTIMENT (심리지수)" 
             displayValue={data.fngValue}
-            subLabel="Fear & Greed Index"
+            subLabel=""
             stages={STAGES.FNG} 
             currentVal={data.fngValue} 
           />
           <StageCard 
             title="MVRV Z-SCORE (온체인)" 
             displayValue={stats.mvrvEst.toFixed(2)}
-            subLabel="실현 가치 기반 고점 탐지"
+            subLabel=""
             stages={STAGES.MVRV} 
             currentVal={stats.mvrvEst} 
           />
         </div>
 
-        <section className="bg-slate-300 p-4 md:p-6 rounded-3xl border border-slate-400 shadow-2xl mb-10 relative overflow-hidden">
-          <div className="flex flex-col md:flex-row justify-between items-end mb-6 gap-4">
-            <div className="text-left">
-              <h3 className="text-lg font-black text-slate-900 tracking-tighter uppercase italic">Price Convergence Path (1Y Forecast)</h3>
-              <p className="text-[8px] font-bold text-slate-600 uppercase tracking-widest mt-0.5">Maturity Adjusted Logarithmic Power Law</p>
-            </div>
+        <section className="bg-slate-300 p-4 rounded-3xl border border-slate-400 shadow-2xl mb-8 relative overflow-hidden">
+          <div className="flex justify-between items-end mb-4">
+            <h3 className="text-lg font-black text-slate-900 tracking-tighter uppercase italic">Price Convergence Path</h3>
           </div>
 
-          <div className="h-[400px] md:h-[600px] w-full">
+          <div className="h-[350px] md:h-[600px] w-full">
             <ResponsiveContainer width="100%" height="100%">
               <ComposedChart data={chartData} margin={{ top: 0, right: 0, left: 0, bottom: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#94a3b8" />
                 <XAxis dataKey="timestamp" type="number" domain={[new Date('2017-07-01').getTime(), 'dataMax']} hide={true} />
                 <YAxis type="number" domain={[2000, 300000]} scale="log" hide={true} />
                 <Tooltip content={<CustomTooltip />} cursor={{stroke: '#64748b'}} />
-                <Line name="상단 밴드" dataKey="upper" stroke={COLORS.upper} strokeWidth={1.8} dot={false} strokeDasharray="4 4" />
-                <Line name="하단 밴드" dataKey="lower" stroke={COLORS.lower} strokeWidth={1.8} dot={false} strokeDasharray="4 4" />
-                <Line name="적정 가치" dataKey="fair" stroke={COLORS.fair} strokeWidth={2.2} dot={false} opacity={1} />
-                <Line name="시장 가격" dataKey="price" stroke={COLORS.price} strokeWidth={3.5} dot={false} connectNulls={true} />
+                <Line name="상단 밴드" dataKey="upper" stroke={COLORS.upper} strokeWidth={1.5} dot={false} strokeDasharray="4 4" />
+                <Line name="하단 밴드" dataKey="lower" stroke={COLORS.lower} strokeWidth={1.5} dot={false} strokeDasharray="4 4" />
+                <Line name="적정 가치" dataKey="fair" stroke={COLORS.fair} strokeWidth={2} dot={false} opacity={1} />
+                <Line name="시장 가격" dataKey="price" stroke={COLORS.price} strokeWidth={3} dot={false} connectNulls={true} />
               </ComposedChart>
             </ResponsiveContainer>
           </div>
         </section>
 
-        <section className="bg-slate-900/40 rounded-3xl border border-white/5 overflow-hidden mb-8 text-left">
-          <div className="px-6 py-4 bg-white/5 border-b border-white/5 flex justify-between items-center">
-            <h4 className="text-[10px] font-black tracking-widest text-amber-500 uppercase italic">멱법칙 예측</h4>
-            <span className="text-[8px] font-bold text-slate-600 uppercase italic">Current Logic Reference</span>
+        <section className="bg-slate-900/40 rounded-3xl border border-white/5 overflow-hidden mb-6 text-left">
+          <div className="px-6 py-4 bg-white/5 border-b border-white/5">
+            <h4 className="text-xs font-black tracking-widest text-amber-500 uppercase italic">멱법칙 모델</h4>
           </div>
-          <div className="overflow-x-auto">
-            <table className="w-full text-left min-w-[700px] text-[12px]">
-              <thead className="bg-black/20 text-slate-500 font-black uppercase text-[9px] italic">
+          <div className="overflow-x-auto custom-scrollbar">
+            <table className="w-full text-left min-w-[600px] text-xs">
+              <thead className="bg-black/20 text-slate-500 font-black uppercase text-[11px] italic">
                 <tr>
                   <th className="px-6 py-4 tracking-widest">Logic Engine</th>
-                  <th className="px-6 py-4 tracking-widest text-rose-500">Upper Resistance</th>
-                  <th className="px-6 py-4 tracking-widest text-amber-500">Fair Value Center</th>
-                  <th className="px-6 py-4 tracking-widest text-emerald-500">Lower Support</th>
+                  <th className="px-6 py-4 tracking-widest text-rose-500">UPPER</th>
+                  <th className="px-6 py-4 tracking-widest text-amber-500">FARE Value</th>
+                  <th className="px-6 py-4 tracking-widest text-emerald-500">LOWER</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-white/5">
@@ -331,7 +305,7 @@ const App: React.FC = () => {
                       {renderKrw(row.u)}
                     </td>
                     <td className="px-6 py-5">
-                      <p className={`mono font-black italic text-amber-500 ${row.active ? 'text-xl' : 'text-md'}`}>${Math.round(row.val).toLocaleString()}</p>
+                      <p className="mono font-black italic text-amber-500 text-sm">${Math.round(row.val).toLocaleString()}</p>
                       {renderKrw(row.val)}
                     </td>
                     <td className="px-6 py-5">
@@ -345,19 +319,18 @@ const App: React.FC = () => {
           </div>
         </section>
 
-        <section className="bg-slate-900/40 rounded-3xl border border-white/5 overflow-hidden mb-10 text-left">
-          <div className="px-6 py-4 bg-white/5 border-b border-white/5 flex justify-between items-center">
-            <h4 className="text-[10px] font-black tracking-widest text-emerald-500 uppercase italic">LONG-TERM PROJECTIONS</h4>
-            <span className="text-[8px] font-bold text-slate-600 uppercase italic">Hybrid Model</span>
+        <section className="bg-slate-900/40 rounded-3xl border border-white/5 overflow-hidden mb-4 text-left">
+          <div className="px-6 py-4 bg-white/5 border-b border-white/5">
+            <h4 className="text-xs font-black tracking-widest text-emerald-500 uppercase italic">장기 예측 가격</h4>
           </div>
-          <div className="overflow-x-auto">
-            <table className="w-full text-left min-w-[700px] text-[12px]">
-              <thead className="bg-black/20 text-slate-500 font-black uppercase text-[9px] italic">
+          <div className="overflow-x-auto custom-scrollbar">
+            <table className="w-full text-left min-w-[600px] text-xs">
+              <thead className="bg-black/20 text-slate-500 font-black uppercase text-[11px] italic">
                 <tr>
-                  <th className="px-6 py-4 tracking-widest">Projection Period</th>
-                  <th className="px-6 py-4 tracking-widest text-rose-500">Projected Peak</th>
-                  <th className="px-6 py-4 tracking-widest text-amber-500">Projected Fair Value</th>
-                  <th className="px-6 py-4 tracking-widest text-emerald-500">Projected Bottom</th>
+                  <th className="px-6 py-4 tracking-widest">Period</th>
+                  <th className="px-6 py-4 tracking-widest text-rose-500">Peak</th>
+                  <th className="px-6 py-4 tracking-widest text-amber-500">Fair</th>
+                  <th className="px-6 py-4 tracking-widest text-emerald-500">Bottom</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-white/5">
@@ -365,14 +338,14 @@ const App: React.FC = () => {
                   <tr key={i} className="hover:bg-white/[0.02]">
                     <td className="px-6 py-5">
                       <span className="font-black italic text-slate-300 block">{proj.label}</span>
-                      <span className="text-[9px] text-slate-600 mono font-bold">{proj.date}</span>
+                      <span className="text-[10px] text-slate-600 mono font-bold">{proj.date}</span>
                     </td>
                     <td className="px-6 py-5">
                       <p className="mono font-bold italic text-rose-500">${Math.round(proj.upper).toLocaleString()}</p>
                       {renderKrw(proj.upper)}
                     </td>
                     <td className="px-6 py-5">
-                      <p className="mono font-black italic text-amber-500 text-lg">${Math.round(proj.weighted).toLocaleString()}</p>
+                      <p className="mono font-black italic text-amber-500 text-sm">${Math.round(proj.weighted).toLocaleString()}</p>
                       {renderKrw(proj.weighted)}
                     </td>
                     <td className="px-6 py-5">
@@ -387,8 +360,8 @@ const App: React.FC = () => {
         </section>
       </main>
 
-      <footer className="py-12 text-center opacity-30">
-        <p className="text-[8px] font-black uppercase tracking-[0.3em] text-slate-500 px-8">Mathematics is the only objective compass in financial markets.</p>
+      <footer className="py-6 text-center opacity-30">
+        <p className="text-[11px] font-black uppercase tracking-[0.2em] text-slate-500 px-8">Mathematics is the only objective compass.</p>
       </footer>
     </div>
   );
