@@ -179,7 +179,7 @@ const App: React.FC = () => {
   );
 
   const renderKrw = (usd: number) => (
-    <p className="text-xs text-slate-500 font-bold opacity-70 mt-0.5 mono italic">
+    <p className="text-xs text-slate-500 font-bold opacity-70 mt-0.5 mono italic text-nowrap">
       <span className="text-[0.85em]">₩</span><Space />{Math.round(usd * data.usdKrw).toLocaleString()}
     </p>
   );
@@ -190,7 +190,7 @@ const App: React.FC = () => {
         <div className="text-left">
           <h1 className="text-xl font-black text-white tracking-tighter italic uppercase flex items-baseline gap-1.5">
             <span>BIT COMPASS <span className="text-amber-500">PRO</span></span>
-            <span className="text-[11px] font-bold text-slate-600 uppercase tracking-widest not-italic">v10.3</span>
+            <span className="text-[11px] font-bold text-slate-600 uppercase tracking-widest not-italic">v10.4</span>
           </h1>
         </div>
         <button onClick={init} className="p-2 bg-slate-900/50 hover:bg-white/5 rounded-xl border border-white/5 transition-colors">
@@ -215,7 +215,7 @@ const App: React.FC = () => {
                   </p>
                 </div>
                 <div className="flex flex-col gap-0.5 mt-2">
-                  <p className="text-xs font-bold text-slate-500 uppercase tracking-widest">환율: <span className="opacity-70 text-[0.85em] italic">₩</span><Space />{data.usdKrw.toLocaleString()} <span className="opacity-50">(Frankfurter)</span></p>
+                  <p className="text-xs font-bold text-slate-500 uppercase tracking-widest text-nowrap">환율: <span className="opacity-70 text-[0.85em] italic">₩</span><Space />{data.usdKrw.toLocaleString()} <span className="opacity-50">(Frankfurter)</span></p>
                   <p className="text-[11px] font-bold text-slate-600 uppercase tracking-tight">Source: Binance | {data.lastUpdated}</p>
                 </div>
               </div>
@@ -294,10 +294,10 @@ const App: React.FC = () => {
             <h4 className="text-xs font-black tracking-widest text-amber-500 uppercase italic">멱법칙 모델</h4>
           </div>
           <div className="overflow-x-auto custom-scrollbar">
-            <table className="w-full text-left min-w-[600px] text-xs">
+            <table className="w-full text-left min-w-[600px] text-xs table-fixed">
               <thead className="bg-black/20 text-slate-500 font-black uppercase text-[11px] italic">
                 <tr>
-                  <th className="px-6 py-4 tracking-widest">Logic Engine</th>
+                  <th className="px-6 py-4 tracking-widest sticky left-0 z-20 bg-slate-900/95 backdrop-blur-sm border-r border-white/5 w-[140px]">Logic Engine</th>
                   <th className="px-6 py-4 tracking-widest text-rose-500">UPPER</th>
                   <th className="px-6 py-4 tracking-widest text-amber-500">FARE Value</th>
                   <th className="px-6 py-4 tracking-widest text-emerald-500">LOWER</th>
@@ -311,17 +311,19 @@ const App: React.FC = () => {
                   { name: 'STANDARD LAW', val: stats.model.standard, u: stats.model.standard * Math.exp(0.5), l: stats.model.standard * Math.exp(-0.5) },
                 ].map((row, i) => (
                   <tr key={i} className={`${row.active ? 'bg-amber-500/[0.03]' : ''} hover:bg-white/[0.02]`}>
-                    <td className="px-6 py-5"><span className={`font-black italic ${row.active ? 'text-amber-400' : 'text-slate-400'}`}>{row.name}</span></td>
+                    <td className={`px-6 py-5 sticky left-0 z-10 border-r border-white/5 ${row.active ? 'bg-[#1a1c22]' : 'bg-slate-950'}`}>
+                      <span className={`font-black italic block ${row.active ? 'text-amber-400' : 'text-slate-400'}`}>{row.name}</span>
+                    </td>
                     <td className="px-6 py-5">
-                      <p className="mono font-bold italic text-rose-500"><span className="opacity-60 text-[0.85em]">$</span><Space />{Math.round(row.u).toLocaleString()}</p>
+                      <p className="mono font-bold italic text-rose-500 text-nowrap"><span className="opacity-60 text-[0.85em]">$</span><Space />{Math.round(row.u).toLocaleString()}</p>
                       {renderKrw(row.u)}
                     </td>
                     <td className="px-6 py-5">
-                      <p className="mono font-black italic text-amber-500 text-sm"><span className="opacity-60 text-[0.85em]">$</span><Space />{Math.round(row.val).toLocaleString()}</p>
+                      <p className="mono font-black italic text-amber-500 text-sm text-nowrap"><span className="opacity-60 text-[0.85em]">$</span><Space />{Math.round(row.val).toLocaleString()}</p>
                       {renderKrw(row.val)}
                     </td>
                     <td className="px-6 py-5">
-                      <p className="mono font-bold italic text-emerald-500"><span className="opacity-60 text-[0.85em]">$</span><Space />{Math.round(row.l).toLocaleString()}</p>
+                      <p className="mono font-bold italic text-emerald-500 text-nowrap"><span className="opacity-60 text-[0.85em]">$</span><Space />{Math.round(row.l).toLocaleString()}</p>
                       {renderKrw(row.l)}
                     </td>
                   </tr>
@@ -336,10 +338,10 @@ const App: React.FC = () => {
             <h4 className="text-xs font-black tracking-widest text-emerald-500 uppercase italic">장기 예측 가격</h4>
           </div>
           <div className="overflow-x-auto custom-scrollbar">
-            <table className="w-full text-left min-w-[600px] text-xs">
+            <table className="w-full text-left min-w-[600px] text-xs table-fixed">
               <thead className="bg-black/20 text-slate-500 font-black uppercase text-[11px] italic">
                 <tr>
-                  <th className="px-6 py-4 tracking-widest">Period</th>
+                  <th className="px-6 py-4 tracking-widest sticky left-0 z-20 bg-slate-900/95 backdrop-blur-sm border-r border-white/5 w-[140px]">Period</th>
                   <th className="px-6 py-4 tracking-widest text-rose-500">Peak</th>
                   <th className="px-6 py-4 tracking-widest text-amber-500">Fair</th>
                   <th className="px-6 py-4 tracking-widest text-emerald-500">Bottom</th>
@@ -348,20 +350,20 @@ const App: React.FC = () => {
               <tbody className="divide-y divide-white/5">
                 {projections.map((proj, i) => (
                   <tr key={i} className="hover:bg-white/[0.02]">
-                    <td className="px-6 py-5">
-                      <span className="font-black italic text-slate-300 block">{proj.label}</span>
+                    <td className="px-6 py-5 sticky left-0 z-10 bg-slate-950 border-r border-white/5">
+                      <span className="font-black italic text-slate-300 block text-nowrap">{proj.label}</span>
                       <span className="text-[10px] text-slate-600 mono font-bold">{proj.date}</span>
                     </td>
                     <td className="px-6 py-5">
-                      <p className="mono font-bold italic text-rose-500"><span className="opacity-60 text-[0.85em]">$</span><Space />{Math.round(proj.upper).toLocaleString()}</p>
+                      <p className="mono font-bold italic text-rose-500 text-nowrap"><span className="opacity-60 text-[0.85em]">$</span><Space />{Math.round(proj.upper).toLocaleString()}</p>
                       {renderKrw(proj.upper)}
                     </td>
                     <td className="px-6 py-5">
-                      <p className="mono font-black italic text-amber-500 text-sm"><span className="opacity-60 text-[0.85em]">$</span><Space />{Math.round(proj.weighted).toLocaleString()}</p>
+                      <p className="mono font-black italic text-amber-500 text-sm text-nowrap"><span className="opacity-60 text-[0.85em]">$</span><Space />{Math.round(proj.weighted).toLocaleString()}</p>
                       {renderKrw(proj.weighted)}
                     </td>
                     <td className="px-6 py-5">
-                      <p className="mono font-bold italic text-emerald-500"><span className="opacity-60 text-[0.85em]">$</span><Space />{Math.round(proj.lower).toLocaleString()}</p>
+                      <p className="mono font-bold italic text-emerald-500 text-nowrap"><span className="opacity-60 text-[0.85em]">$</span><Space />{Math.round(proj.lower).toLocaleString()}</p>
                       {renderKrw(proj.lower)}
                     </td>
                   </tr>
