@@ -1,6 +1,5 @@
-
 {
-  "name": "BIT COMPASS PRO v11.6",
-  "description": "5-minute precision logging, synced price font sizing, and refined UI layout for micro-trend analysis.",
+  "name": "BIT COMPASS PRO v12.0 log 삭제가 안되고 있어",
+  "description": "Fixed Clear All Logs issue, refined AI diagnostics, and strictly enforced 12H log window with 1-year future chart projection.",
   "requestFramePermissions": []
 }
