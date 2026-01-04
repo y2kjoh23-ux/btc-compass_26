@@ -1,6 +1,6 @@
 
 {
-  "name": "BIT COMPASS PRO v14.9",
-  "description": "Introduced Dual-Path Neural Synthesis to solve mobile timeout issues. Automatically detects device type to adjust analysis depth. PC mode maintains high-res 500+ char analysis, while Mobile Lite mode provides concise 150 char summaries for instant response.",
+  "name": "BIT COMPASS PRO v15.1",
+  "description": "Updated Edge Quant Engine to provide analysis even with a single log entry. Improved static snapshot synthesis and initial state insights to ensure users get immediate feedback regardless of history depth.",
   "requestFramePermissions": []
 }

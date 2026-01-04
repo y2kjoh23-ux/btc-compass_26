@@ -5,7 +5,6 @@ import { getModelValues } from './services/modelEngine';
 import { MarketData, MarketStatus } from './types';
 import StageCard from './components/StageCard';
 import { STAGES, CHART_START_DATE } from './constants';
-import { GoogleGenAI, Type } from "@google/genai";
 import { 
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ComposedChart, Line, ReferenceLine, Label
 } from 'recharts';
@@ -50,7 +49,6 @@ interface DateInsight {
 interface AIAnalysis {
   summary: string;
   insights: DateInsight[];
-  isLite?: boolean;
 }
 
 const CustomTooltip = ({ active, payload, label }: any) => {
@@ -102,7 +100,6 @@ const App: React.FC = () => {
   const [aiAnalysis, setAiAnalysis] = useState<AIAnalysis | null>(null);
   const [expandedDate, setExpandedDate] = useState<string | null>(null);
   const [isMounted, setIsMounted] = useState(false); 
-  const [isMobile, setIsMobile] = useState(false);
   
   const lastClearTimestamp = useRef<number>(0);
 
@@ -115,11 +112,6 @@ const App: React.FC = () => {
 
   useEffect(() => { 
     init();
-    // 모바일 여부 판단 (768px 기준)
-    const checkMobile = () => setIsMobile(window.innerWidth <= 768);
-    checkMobile();
-    window.addEventListener('resize', checkMobile);
-    
     setTimeout(() => setIsMounted(true), 150);
     const saved = localStorage.getItem('btc_compass_history');
     if (saved) {
@@ -129,7 +121,6 @@ const App: React.FC = () => {
         setHistory([]);
       }
     }
-    return () => window.removeEventListener('resize', checkMobile);
   }, []);
 
   const calculateIndicators = (price: number, date: Date, fng: number) => {
@@ -158,77 +149,73 @@ const App: React.FC = () => {
     return calculateIndicators(data.currentPrice, new Date(), data.fngValue);
   }, [data]);
 
-  const fetchAIAnalysis = async (historyData: Snapshot[]) => {
-    if (historyData.length < 1 || isAnalyzing) return;
+  // 로컬 알고리즘 기반 퀀트 분석 엔진
+  const runLocalQuantAnalysis = (historyData: Snapshot[]) => {
+    if (historyData.length < 1) return;
     setIsAnalyzing(true);
     
-    try {
-      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-      // 모바일일 경우 분석 데이터 개수를 줄임 (10개 -> 5개)
-      const targetHistory = isMobile ? historyData.slice(0, 5) : historyData.slice(0, 10);
-      const historyStr = targetHistory.map(h => 
-        `[${h.date}] $${h.price.toLocaleString()}, Osc: ${h.oscillator.toFixed(2)}, F&G: ${Math.round(h.fng)}, MVRV: ${h.mvrv.toFixed(2)}`
-      ).join('\n');
+    setTimeout(() => {
+      const latest = historyData[0];
+      const prev = historyData.length > 1 ? historyData[1] : null;
+      const oldest = historyData[Math.min(historyData.length - 1, 5)];
+
+      // 1. 흐름 및 정적 상태 분석
+      let summary = "";
       
-      // 모바일 전용 Lite 프롬프트 구성 (요구 분량 축소로 응답 속도 극대화)
-      const prompt = isMobile 
-        ? `비트코인 전략가로서 데이터를 '핵심만 짧게' 분석하십시오. (모바일용)
-1. 'summary'에는 현재 위치와 대응법을 150자 내외로 매우 간결하게 작성하세요.
-2. 'insights'에는 각 시점의 의미를 한 줄로 요약하십시오.
+      if (latest.oscillator > 0.4) {
+        summary = "경고: 현재 가격이 모델 상단 임계치에 도달했습니다. 역사적으로 이 구간은 강력한 매도 압력이 발생하는 '과열 국면'입니다. 신규 진입보다는 리스크 관리에 집중해야 할 시점입니다.";
+      } else if (latest.oscillator < -0.4) {
+        summary = "기회: 시장이 통계적 저점 구간에 진입했습니다. 공포 지수가 높고 모델 하단에 위치한 현재 상태는 장기 투자자에게 '매집의 최적기'임을 시사합니다. 분할 매수 전략이 유효합니다.";
+      } else if (prev) {
+        // 데이터가 2개 이상일 때 추세 분석
+        const oscDelta = latest.oscillator - prev.oscillator;
+        const fngDelta = latest.fng - prev.fng;
+        const mvrvDelta = latest.mvrv - prev.mvrv;
+        const trend = oscDelta + (fngDelta / 100) + (mvrvDelta / 5);
 
-DATA:
-${historyStr}`
-        : `비트코인 퀀트 전략가로서 다음 데이터를 정밀 분석하십시오. (PC 고성능 모드)
-1. 'summary'에는 시장의 거시적 위치, 모델 궤도 이탈 여부, 대응 시나리오를 500자 이상의 상세한 논조로 기술하십시오.
-2. 'insights'에는 각 시점별 지표 변화의 의미를 전문적으로 분석하십시오.
-
-DATA:
-${historyStr}`;
-
-      const response = await ai.models.generateContent({
-        model: 'gemini-3-flash-preview',
-        contents: prompt,
-        config: { 
-          responseMimeType: 'application/json',
-          responseSchema: {
-            type: Type.OBJECT,
-            properties: {
-              summary: { type: Type.STRING },
-              insights: { 
-                type: Type.ARRAY, 
-                items: {
-                  type: Type.OBJECT,
-                  properties: {
-                    time: { type: Type.STRING },
-                    insight: { type: Type.STRING }
-                  },
-                  required: ["time", "insight"]
-                }
-              }
-            },
-            required: ["summary", "insights"]
-          },
-          // 모바일에서는 지연 시간을 더 줄이기 위해 thinkingBudget을 0으로 설정
-          thinkingConfig: { thinkingBudget: isMobile ? 0 : 2000 }
+        if (trend > 0.05) {
+          summary = `추세 상승: 주요 지표들이 동반 우상향하며 긍정적인 모멘텀을 형성하고 있습니다. 가격이 적정 가치(${Math.round(latest.fair).toLocaleString()})를 상회하려는 시도가 관찰되며, 투심 회복에 따른 추가 상승 가능성이 높습니다.`;
+        } else if (trend < -0.05) {
+          summary = `추세 둔화: 지표의 단기 하락 전환이 관찰됩니다. 시장의 열기가 식어가는 과정이며, 지지선 확인을 위한 조정 가능성이 존재합니다. 무리한 추격 매수보다는 관망하며 가격 안착을 확인하십시오.`;
+        } else {
+          summary = "균형 유지: 시장이 뚜렷한 방향성 없이 적정 가치 궤도 내에서 안정적으로 움직이고 있습니다. 큰 변동성보다는 박스권 흐름이 예상되며, 지표의 급격한 변화를 주시하며 평단가 관리에 힘쓰십시오.";
         }
-      });
-      
-      if (response.text) {
-        const parsed = JSON.parse(response.text);
-        setAiAnalysis({ ...parsed, isLite: isMobile });
+      } else {
+        // 데이터가 1개뿐일 때 정적 상태 분석
+        summary = `스냅샷 분석: 현재 비트코인은 적정 가치(${Math.round(latest.fair).toLocaleString()}) 대비 약 ${Math.abs(Math.round((latest.price / latest.fair - 1) * 100))}% ${latest.price > latest.fair ? '상회' : '하회'} 중입니다. 뚜렷한 추세 형성을 판단하기 위해 추가 로그 기록이 필요하지만, 현재 위치는 통계적으로 '평균 회귀' 가능성이 있는 구간입니다.`;
       }
-    } catch (e: any) { 
-      setAiAnalysis({ 
-        summary: isMobile ? "네트워크 지연으로 간략한 분석만 제공합니다. 모델은 현재 안정 범위에 있습니다." : "데이터 연산 지연이 발생했습니다. 모델 안정성 내에서 흐름을 유지 중입니다.", 
-        insights: [],
-        isLite: true
+
+      // 3. 개별 시점 인사이트 생성
+      const insights: DateInsight[] = historyData.map((h, i) => {
+        const nextH = historyData[i + 1];
+        if (!nextH) {
+          // 마지막 로그(또는 유일한 로그)에 대한 상태 코멘트
+          if (h.fng > 70) return { time: h.date, insight: "극단적 탐욕 구간입니다. 가격 상승세가 강력하나 단기 조정에 주의하십시오." };
+          if (h.fng < 30) return { time: h.date, insight: "극심한 공포가 지배하는 구간입니다. 역발상적 관점에서 매수 기회를 검토할 수 있습니다." };
+          return { time: h.date, insight: "지표가 중립 범위에 머물고 있습니다. 시장의 방향성이 결정되기를 기다리는 시기입니다." };
+        }
+        
+        const dOsc = h.oscillator - nextH.oscillator;
+        const dFng = h.fng - nextH.fng;
+        
+        let msg = "";
+        if (Math.abs(dOsc) < 0.01 && Math.abs(dFng) < 2) msg = "지표가 정체 상태이며 에너지를 응축 중입니다.";
+        else if (dOsc > 0 && dFng > 0) msg = "가격 회복과 투심 개선이 동시에 나타나는 긍정적 신호입니다.";
+        else if (dOsc < 0 && dFng < 0) msg = "가격 이탈과 공포 확산이 관찰되는 리스크 확대 구간입니다.";
+        else if (dOsc > 0 && dFng < 0) msg = "가격은 오르나 투심은 위축된 '약세 다이버전스' 가능성이 있습니다.";
+        else msg = "시장 내 매수-매도세가 팽팽하게 맞서며 변동성을 준비하고 있습니다.";
+        
+        return { time: h.date, insight: msg };
       });
-    } finally { setIsAnalyzing(false); }
+
+      setAiAnalysis({ summary, insights });
+      setIsAnalyzing(false);
+    }, 400);
   };
 
   useEffect(() => {
-    if (showHistory && history.length >= 1 && !aiAnalysis && !isAnalyzing) {
-      fetchAIAnalysis(history);
+    if (showHistory && history.length >= 1 && !aiAnalysis) {
+      runLocalQuantAnalysis(history);
     }
   }, [showHistory, history]);
 
@@ -378,23 +365,19 @@ ${historyStr}`;
             </div>
             <div className="flex-1 overflow-y-auto px-1 md:px-4 py-6 custom-scrollbar">
               {aiAnalysis ? (
-                <div className={`mb-8 border rounded-3xl p-6 text-[14px] md:text-[15px] leading-relaxed italic shadow-2xl mx-1 ${aiAnalysis.isLite ? 'bg-amber-500/5 border-amber-500/20 text-amber-100' : 'bg-indigo-500/10 border-indigo-500/30 text-indigo-100'}`}>
+                <div className="mb-8 bg-indigo-500/10 border border-indigo-500/30 rounded-3xl p-6 text-[14px] md:text-[15px] leading-relaxed italic text-indigo-100 shadow-2xl mx-1">
                   <div className="flex items-center gap-2 mb-4">
-                    <span className={`w-2.5 h-2.5 rounded-full animate-ping ${aiAnalysis.isLite ? 'bg-amber-400' : 'bg-indigo-400'}`}></span>
-                    <span className={`font-black uppercase tracking-widest text-[11px] ${aiAnalysis.isLite ? 'text-amber-400' : 'text-indigo-400'}`}>
-                      {aiAnalysis.isLite ? 'Quant Strategy Synthesis (Lite Mode)' : 'Quant Strategy Synthesis (PC High-Res)'}
-                    </span>
+                    <span className="w-2.5 h-2.5 bg-indigo-400 rounded-full animate-pulse"></span>
+                    <span className="font-black uppercase tracking-widest text-indigo-400 text-[11px]">Edge Quant Strategy Synthesis (Local Engine)</span>
                   </div>
-                  <div className="whitespace-pre-line">{aiAnalysis.summary}</div>
+                  <div className="whitespace-pre-line leading-relaxed">{aiAnalysis.summary}</div>
                 </div>
               ) : (
                 <div className="mb-8 mx-1">
                   {isAnalyzing && (
                     <div className="animate-pulse bg-white/5 p-16 rounded-3xl text-center flex flex-col items-center gap-4">
                       <div className="w-10 h-10 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin"></div>
-                      <span className="text-[12px] font-black uppercase tracking-widest text-slate-500">
-                        {isMobile ? '모바일 최적화 분석 가동 중...' : '신경망 분석 엔진 가동 중...'}
-                      </span>
+                      <span className="text-[12px] font-black uppercase tracking-widest text-slate-500">데이터 흐름 분석 중...</span>
                     </div>
                   )}
                 </div>
@@ -446,7 +429,7 @@ ${historyStr}`;
                           <div className="px-4 py-5 bg-indigo-500/10 border-l-4 border-indigo-500 mt-1 mb-4 text-[13px] md:text-[14px] text-indigo-200 font-bold italic leading-relaxed animate-in fade-in slide-in-from-top-2 duration-300 rounded-r-xl">
                             <div className="flex items-center gap-2 mb-2">
                                 <svg className="w-3.5 h-3.5 text-indigo-400" fill="currentColor" viewBox="0 0 20 20"><path d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-11a1 1 0 10-2 0v2H7a1 1 0 100 2h2v2a1 1 0 102 0v-2h2a1 1 0 100-2h-2V7z"></path></svg>
-                                <span className="uppercase tracking-widest text-[9px] text-indigo-400 not-italic">Neural Insight for {h.date}</span>
+                                <span className="uppercase tracking-widest text-[9px] text-indigo-400 not-italic">Quant Insight for {h.date}</span>
                             </div>
                             {insight}
                           </div>
@@ -458,7 +441,7 @@ ${historyStr}`;
               </div>
             </div>
             <div className="p-5 bg-slate-950/50 border-t border-white/5 flex justify-between items-center">
-              <span className="text-[10px] font-black text-slate-600 uppercase tracking-widest italic tracking-wider">Neural Analysis Engine v14.9</span>
+              <span className="text-[10px] font-black text-slate-600 uppercase tracking-widest italic tracking-wider">Quant Engine v15.1 (Edge)</span>
               <button onClick={clearHistory} className="px-5 py-2.5 text-[10px] font-black uppercase tracking-widest text-slate-500 hover:text-rose-500 transition-all bg-white/5 hover:bg-rose-500/10 rounded-xl border border-white/5 shadow-inner active:scale-95">Clear Logs</button>
             </div>
           </div>
@@ -466,7 +449,7 @@ ${historyStr}`;
       )}
 
       <header className="max-w-screen-2xl mx-auto px-4 py-3 flex justify-between items-center border-b border-white/5 bg-slate-950/80 backdrop-blur-md sticky top-0 z-50">
-        <h1 className="text-lg font-black text-white tracking-tighter italic uppercase flex items-baseline gap-1.5">BIT COMPASS <span className="text-amber-500">PRO</span> <span className="text-[12px] font-bold text-slate-700 tracking-widest not-italic">v14.9</span></h1>
+        <h1 className="text-lg font-black text-white tracking-tighter italic uppercase flex items-baseline gap-1.5">BIT COMPASS <span className="text-amber-500">PRO</span> <span className="text-[12px] font-bold text-slate-700 tracking-widest not-italic">v15.1</span></h1>
         <div className="flex items-center gap-2">
           <button onClick={() => setShowHistory(true)} className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-900/50 hover:bg-white/5 rounded-xl border border-white/5 transition-colors active:scale-95">
             <svg className="w-4 h-4 text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
