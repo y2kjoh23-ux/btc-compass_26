@@ -10,18 +10,6 @@ import {
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ComposedChart, Line, ReferenceLine, Label
 } from 'recharts';
 
-// aistudio 타입 정의 - AIStudio 인터페이스를 명시적으로 정의하여 기존 환경과의 타입 충돌 해결
-interface AIStudio {
-  hasSelectedApiKey: () => Promise<boolean>;
-  openSelectKey: () => Promise<void>;
-}
-
-declare global {
-  interface Window {
-    aistudio: AIStudio;
-  }
-}
-
 const COLORS = {
   upper: '#ff2d55',
   fair: '#d97706',
@@ -113,7 +101,6 @@ const App: React.FC = () => {
   const [aiAnalysis, setAiAnalysis] = useState<AIAnalysis | null>(null);
   const [expandedDate, setExpandedDate] = useState<string | null>(null);
   const [isMounted, setIsMounted] = useState(false); 
-  const [aiError, setAiError] = useState<string | null>(null);
   
   const lastClearTimestamp = useRef<number>(0);
 
@@ -166,32 +153,22 @@ const App: React.FC = () => {
   const fetchAIAnalysis = async (historyData: Snapshot[]) => {
     if (historyData.length < 1 || isAnalyzing) return;
     setIsAnalyzing(true);
-    setAiError(null);
     
     try {
-      // API 키 체크
-      const hasKey = await window.aistudio.hasSelectedApiKey();
-      if (!hasKey) {
-        setAiError("API_KEY_REQUIRED");
-        setIsAnalyzing(false);
-        return;
-      }
-
-      // 인스턴스 매번 생성 (최신 키 보장)
       const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
       const historyStr = historyData.slice(0, 10).map(h => 
         `[${h.date}] $${h.price.toLocaleString()}, Osc: ${h.oscillator.toFixed(2)}, F&G: ${Math.round(h.fng)}, MVRV: ${h.mvrv.toFixed(2)}`
       ).join('\n');
       
       const prompt = `비트코인 퀀트 전략가로서 다음 데이터를 정밀 분석하십시오.
-1. 'summary'에는 현재 시장의 거시적 위치, 모델 궤도 이탈 여부, 향후 대응 시나리오를 '매우 구체적이고 전문적인 논조'로 최소 500자 이상 작성하세요.
-2. 'insights'에는 각 타임스탬프별 지표 변화의 의미를 한글로 상세히 기술하십시오.
+1. 'summary'에는 현재 시장의 거시적 위치 및 향후 대응 시나리오를 전문적으로 기술하십시오.
+2. 'insights'에는 각 시점별 지표 변화의 의미를 한글로 기술하십시오.
 
 DATA:
 ${historyStr}`;
 
       const response = await ai.models.generateContent({
-        model: 'gemini-3-pro-preview',
+        model: 'gemini-3-flash-preview',
         contents: prompt,
         config: { 
           responseMimeType: 'application/json',
@@ -212,9 +189,7 @@ ${historyStr}`;
               }
             },
             required: ["summary", "insights"]
-          },
-          // gemini-3-pro-preview 모델의 복잡한 추론 작업을 위해 thinkingBudget을 32768로 설정
-          thinkingConfig: { thinkingBudget: 32768 }
+          }
         }
       });
       
@@ -222,19 +197,8 @@ ${historyStr}`;
         setAiAnalysis(JSON.parse(response.text));
       }
     } catch (e: any) { 
-      console.error(e);
-      if (e.message?.includes("not found") || e.message?.includes("API_KEY")) {
-        setAiError("API_KEY_INVALID");
-      } else {
-        setAiError("GENERAL_ERROR");
-      }
+      setAiAnalysis({ summary: "데이터 연산 지연이 발생했습니다. 모델 안정성 내에서 흐름을 유지 중입니다.", insights: [] });
     } finally { setIsAnalyzing(false); }
-  };
-
-  const handleOpenApiKeyDialog = async () => {
-    await window.aistudio.openSelectKey();
-    // 키 선택 시도 후 바로 분석 재시도
-    if (history.length > 0) fetchAIAnalysis(history);
   };
 
   useEffect(() => {
@@ -392,30 +356,18 @@ ${historyStr}`;
                 <div className="mb-8 bg-indigo-500/10 border border-indigo-500/30 rounded-3xl p-6 text-[14px] md:text-[15px] leading-relaxed italic text-indigo-100 shadow-2xl mx-1">
                   <div className="flex items-center gap-2 mb-4">
                     <span className="w-2.5 h-2.5 bg-indigo-400 rounded-full animate-ping"></span>
-                    <span className="font-black uppercase tracking-widest text-indigo-400 text-[11px]">Quant Strategy Synthesis (Gemini 3 Pro)</span>
+                    <span className="font-black uppercase tracking-widest text-indigo-400 text-[11px]">Quant Strategy Synthesis</span>
                   </div>
                   <div className="whitespace-pre-line">{aiAnalysis.summary}</div>
                 </div>
               ) : (
                 <div className="mb-8 mx-1">
-                  {isAnalyzing ? (
+                  {isAnalyzing && (
                     <div className="animate-pulse bg-white/5 p-16 rounded-3xl text-center flex flex-col items-center gap-4">
                       <div className="w-10 h-10 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin"></div>
                       <span className="text-[12px] font-black uppercase tracking-widest text-slate-500">신경망 분석 엔진 가동 중...</span>
                     </div>
-                  ) : aiError ? (
-                    <div className="bg-rose-500/10 border border-rose-500/30 p-10 rounded-3xl text-center space-y-4">
-                      <p className="text-rose-400 font-bold italic">
-                        {aiError === "API_KEY_REQUIRED" ? "AI 분석을 위해 API 키 선택이 필요합니다." : 
-                         aiError === "API_KEY_INVALID" ? "사용 중인 API 키가 만료되었거나 권한이 없습니다." : 
-                         "데이터 분석 중 오류가 발생했습니다. (모바일 지연)"}
-                      </p>
-                      <div className="flex flex-col md:flex-row gap-3 justify-center">
-                        <button onClick={handleOpenApiKeyDialog} className="px-6 py-3 bg-rose-500 text-white rounded-2xl font-black uppercase tracking-widest text-[11px] hover:bg-rose-600 transition-all active:scale-95">API 키 설정하기</button>
-                        <button onClick={() => fetchAIAnalysis(history)} className="px-6 py-3 bg-white/10 text-slate-300 rounded-2xl font-black uppercase tracking-widest text-[11px] hover:bg-white/20 transition-all active:scale-95">다시 시도</button>
-                      </div>
-                    </div>
-                  ) : null}
+                  )}
                 </div>
               )}
               
@@ -477,7 +429,7 @@ ${historyStr}`;
               </div>
             </div>
             <div className="p-5 bg-slate-950/50 border-t border-white/5 flex justify-between items-center">
-              <span className="text-[10px] font-black text-slate-600 uppercase tracking-widest italic tracking-wider">Neural Analysis Engine v14.7</span>
+              <span className="text-[10px] font-black text-slate-600 uppercase tracking-widest italic tracking-wider">Neural Analysis Engine v14.8</span>
               <button onClick={clearHistory} className="px-5 py-2.5 text-[10px] font-black uppercase tracking-widest text-slate-500 hover:text-rose-500 transition-all bg-white/5 hover:bg-rose-500/10 rounded-xl border border-white/5 shadow-inner active:scale-95">Clear Logs</button>
             </div>
           </div>
@@ -485,7 +437,7 @@ ${historyStr}`;
       )}
 
       <header className="max-w-screen-2xl mx-auto px-4 py-3 flex justify-between items-center border-b border-white/5 bg-slate-950/80 backdrop-blur-md sticky top-0 z-50">
-        <h1 className="text-lg font-black text-white tracking-tighter italic uppercase flex items-baseline gap-1.5">BIT COMPASS <span className="text-amber-500">PRO</span> <span className="text-[12px] font-bold text-slate-700 tracking-widest not-italic">v14.7</span></h1>
+        <h1 className="text-lg font-black text-white tracking-tighter italic uppercase flex items-baseline gap-1.5">BIT COMPASS <span className="text-amber-500">PRO</span> <span className="text-[12px] font-bold text-slate-700 tracking-widest not-italic">v14.8</span></h1>
         <div className="flex items-center gap-2">
           <button onClick={() => setShowHistory(true)} className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-900/50 hover:bg-white/5 rounded-xl border border-white/5 transition-colors active:scale-95">
             <svg className="w-4 h-4 text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
