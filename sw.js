@@ -1,15 +1,15 @@
 
-const CACHE_NAME = 'btc-compass-v9.9';
-const urlsToCache = ['./', './index.html'];
-
-self.addEventListener('install', (event) => {
-  event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => cache.addAll(urlsToCache))
-  );
+// Service worker disabled to prevent 404 on temporary environment URLs
+self.addEventListener('install', () => {
+  self.skipWaiting();
 });
 
-self.addEventListener('fetch', (event) => {
-  event.respondWith(
-    caches.match(event.request).then((response) => response || fetch(event.request))
+self.addEventListener('activate', (event) => {
+  event.waitUntil(
+    caches.keys().then((cacheNames) => {
+      return Promise.all(
+        cacheNames.map((cacheName) => caches.delete(cacheName))
+      );
+    })
   );
 });

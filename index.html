@@ -4,7 +4,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-    <title>BIT COMPASS PRO v13.5</title>
+    <title>BIT COMPASS PRO v13.8</title>
     
     <!-- PWA 메타 태그 -->
     <link rel="manifest" href="manifest.json" />
@@ -13,6 +13,17 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="BIT COMPASS" />
     <link rel="apple-touch-icon" href="https://cdn-icons-png.flaticon.com/512/2585/2585175.png" />
+
+    <!-- 서비스 워커 및 캐시 클린업 (404 오류 방지) -->
+    <script>
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.getRegistrations().then(function(registrations) {
+          for(let registration of registrations) {
+            registration.unregister();
+          }
+        });
+      }
+    </script>
 
     <!-- 고급 폰트 적용 (Pretendard) -->
     <link rel="stylesheet" as="style" crossorigin href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css" />
@@ -60,24 +71,6 @@
       
       *:hover::-webkit-scrollbar-thumb,
       *:active::-webkit-scrollbar-thumb {
-        background: rgba(255, 255, 255, 0.15);
-      }
-
-      .custom-scrollbar {
-        scrollbar-width: none;
-      }
-
-      .custom-scrollbar::-webkit-scrollbar {
-        height: 1px;
-        width: 1px;
-      }
-
-      .custom-scrollbar::-webkit-scrollbar-thumb {
-        background: transparent;
-      }
-
-      .custom-scrollbar:hover::-webkit-scrollbar-thumb,
-      .custom-scrollbar:active::-webkit-scrollbar-thumb {
         background: rgba(255, 255, 255, 0.15);
       }
     </style>

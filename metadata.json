@@ -1,5 +1,6 @@
+
 {
-  "name": "BIT COMPASS PRO v13.8 폰아이콘 문제",
-  "description": "Resolved 404 error on home screen launch by specifying index.html in manifest and finalized log styling.",
+  "name": "BIT COMPASS PRO v13.8",
+  "description": "Resolved PWA 404 launch error by disabling Service Worker caching and optimizing start_url for temporary cloud URLs.",
   "requestFramePermissions": []
 }
