@@ -1,5 +1,5 @@
 {
-  "name": "BIT COMPASS PRO v14.0 url 어렵네",
-  "description": "Optimized for Galaxy PWA deployment via Chrome/Samsung Internet from KakaoTalk links. Stabilized start_url and versioning.",
+  "name": "BIT COMPASS PRO v14.1 강화된",
+  "description": "Final PWA stability patch. Explicitly set start_url to index.html and synchronized versioning across all files to resolve 404 errors caused by ephemeral sandbox URLs.",
   "requestFramePermissions": []
 }

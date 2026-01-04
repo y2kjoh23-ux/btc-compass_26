@@ -4,7 +4,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-    <title>BIT COMPASS PRO v13.8</title>
+    <title>BIT COMPASS PRO v14.1</title>
     
     <!-- PWA 메타 태그 -->
     <link rel="manifest" href="manifest.json" />
@@ -14,7 +14,7 @@
     <meta name="apple-mobile-web-app-title" content="BIT COMPASS" />
     <link rel="apple-touch-icon" href="https://cdn-icons-png.flaticon.com/512/2585/2585175.png" />
 
-    <!-- 서비스 워커 및 캐시 클린업 (404 오류 방지) -->
+    <!-- 서비스 워커 완전 제거 (임시 주소 오류 방지) -->
     <script>
       if ('serviceWorker' in navigator) {
         navigator.serviceWorker.getRegistrations().then(function(registrations) {

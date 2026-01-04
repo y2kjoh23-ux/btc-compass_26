@@ -1,9 +1,9 @@
 
 {
-  "name": "BIT COMPASS PRO v13.8",
+  "name": "BIT COMPASS PRO v14.1",
   "short_name": "BIT COMPASS",
   "description": "Bitcoin Quant Strategy Dashboard",
-  "start_url": ".",
+  "start_url": "index.html",
   "display": "standalone",
   "background_color": "#020617",
   "theme_color": "#020617",
