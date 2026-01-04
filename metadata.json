@@ -1,5 +1,5 @@
 {
-  "name": "BIT COMPASS PRO v14.1 강화된",
+  "name": "BIT COMPASS PRO v14.2 네이버",
   "description": "Final PWA stability patch. Explicitly set start_url to index.html and synchronized versioning across all files to resolve 404 errors caused by ephemeral sandbox URLs.",
   "requestFramePermissions": []
 }
