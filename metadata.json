@@ -1,6 +1,6 @@
 
 {
-  "name": "BIT COMPASS PRO v14.8",
-  "description": "Reverted AI analysis to gemini-3-flash-preview for maximum speed and mobile stability. Removed mandatory manual API key selection to fix user friction on desktop and mobile. Optimized prompts for faster synthesis.",
+  "name": "BIT COMPASS PRO v14.9",
+  "description": "Introduced Dual-Path Neural Synthesis to solve mobile timeout issues. Automatically detects device type to adjust analysis depth. PC mode maintains high-res 500+ char analysis, while Mobile Lite mode provides concise 150 char summaries for instant response.",
   "requestFramePermissions": []
 }

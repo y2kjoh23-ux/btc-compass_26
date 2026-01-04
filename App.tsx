@@ -50,6 +50,7 @@ interface DateInsight {
 interface AIAnalysis {
   summary: string;
   insights: DateInsight[];
+  isLite?: boolean;
 }
 
 const CustomTooltip = ({ active, payload, label }: any) => {
@@ -101,6 +102,7 @@ const App: React.FC = () => {
   const [aiAnalysis, setAiAnalysis] = useState<AIAnalysis | null>(null);
   const [expandedDate, setExpandedDate] = useState<string | null>(null);
   const [isMounted, setIsMounted] = useState(false); 
+  const [isMobile, setIsMobile] = useState(false);
   
   const lastClearTimestamp = useRef<number>(0);
 
@@ -113,6 +115,11 @@ const App: React.FC = () => {
 
   useEffect(() => { 
     init();
+    // 모바일 여부 판단 (768px 기준)
+    const checkMobile = () => setIsMobile(window.innerWidth <= 768);
+    checkMobile();
+    window.addEventListener('resize', checkMobile);
+    
     setTimeout(() => setIsMounted(true), 150);
     const saved = localStorage.getItem('btc_compass_history');
     if (saved) {
@@ -122,6 +129,7 @@ const App: React.FC = () => {
         setHistory([]);
       }
     }
+    return () => window.removeEventListener('resize', checkMobile);
   }, []);
 
   const calculateIndicators = (price: number, date: Date, fng: number) => {
@@ -156,13 +164,23 @@ const App: React.FC = () => {
     
     try {
       const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-      const historyStr = historyData.slice(0, 10).map(h => 
+      // 모바일일 경우 분석 데이터 개수를 줄임 (10개 -> 5개)
+      const targetHistory = isMobile ? historyData.slice(0, 5) : historyData.slice(0, 10);
+      const historyStr = targetHistory.map(h => 
         `[${h.date}] $${h.price.toLocaleString()}, Osc: ${h.oscillator.toFixed(2)}, F&G: ${Math.round(h.fng)}, MVRV: ${h.mvrv.toFixed(2)}`
       ).join('\n');
       
-      const prompt = `비트코인 퀀트 전략가로서 다음 데이터를 정밀 분석하십시오.
-1. 'summary'에는 현재 시장의 거시적 위치 및 향후 대응 시나리오를 전문적으로 기술하십시오.
-2. 'insights'에는 각 시점별 지표 변화의 의미를 한글로 기술하십시오.
+      // 모바일 전용 Lite 프롬프트 구성 (요구 분량 축소로 응답 속도 극대화)
+      const prompt = isMobile 
+        ? `비트코인 전략가로서 데이터를 '핵심만 짧게' 분석하십시오. (모바일용)
+1. 'summary'에는 현재 위치와 대응법을 150자 내외로 매우 간결하게 작성하세요.
+2. 'insights'에는 각 시점의 의미를 한 줄로 요약하십시오.
+
+DATA:
+${historyStr}`
+        : `비트코인 퀀트 전략가로서 다음 데이터를 정밀 분석하십시오. (PC 고성능 모드)
+1. 'summary'에는 시장의 거시적 위치, 모델 궤도 이탈 여부, 대응 시나리오를 500자 이상의 상세한 논조로 기술하십시오.
+2. 'insights'에는 각 시점별 지표 변화의 의미를 전문적으로 분석하십시오.
 
 DATA:
 ${historyStr}`;
@@ -189,15 +207,22 @@ ${historyStr}`;
               }
             },
             required: ["summary", "insights"]
-          }
+          },
+          // 모바일에서는 지연 시간을 더 줄이기 위해 thinkingBudget을 0으로 설정
+          thinkingConfig: { thinkingBudget: isMobile ? 0 : 2000 }
         }
       });
       
       if (response.text) {
-        setAiAnalysis(JSON.parse(response.text));
+        const parsed = JSON.parse(response.text);
+        setAiAnalysis({ ...parsed, isLite: isMobile });
       }
     } catch (e: any) { 
-      setAiAnalysis({ summary: "데이터 연산 지연이 발생했습니다. 모델 안정성 내에서 흐름을 유지 중입니다.", insights: [] });
+      setAiAnalysis({ 
+        summary: isMobile ? "네트워크 지연으로 간략한 분석만 제공합니다. 모델은 현재 안정 범위에 있습니다." : "데이터 연산 지연이 발생했습니다. 모델 안정성 내에서 흐름을 유지 중입니다.", 
+        insights: [],
+        isLite: true
+      });
     } finally { setIsAnalyzing(false); }
   };
 
@@ -353,10 +378,12 @@ ${historyStr}`;
             </div>
             <div className="flex-1 overflow-y-auto px-1 md:px-4 py-6 custom-scrollbar">
               {aiAnalysis ? (
-                <div className="mb-8 bg-indigo-500/10 border border-indigo-500/30 rounded-3xl p-6 text-[14px] md:text-[15px] leading-relaxed italic text-indigo-100 shadow-2xl mx-1">
+                <div className={`mb-8 border rounded-3xl p-6 text-[14px] md:text-[15px] leading-relaxed italic shadow-2xl mx-1 ${aiAnalysis.isLite ? 'bg-amber-500/5 border-amber-500/20 text-amber-100' : 'bg-indigo-500/10 border-indigo-500/30 text-indigo-100'}`}>
                   <div className="flex items-center gap-2 mb-4">
-                    <span className="w-2.5 h-2.5 bg-indigo-400 rounded-full animate-ping"></span>
-                    <span className="font-black uppercase tracking-widest text-indigo-400 text-[11px]">Quant Strategy Synthesis</span>
+                    <span className={`w-2.5 h-2.5 rounded-full animate-ping ${aiAnalysis.isLite ? 'bg-amber-400' : 'bg-indigo-400'}`}></span>
+                    <span className={`font-black uppercase tracking-widest text-[11px] ${aiAnalysis.isLite ? 'text-amber-400' : 'text-indigo-400'}`}>
+                      {aiAnalysis.isLite ? 'Quant Strategy Synthesis (Lite Mode)' : 'Quant Strategy Synthesis (PC High-Res)'}
+                    </span>
                   </div>
                   <div className="whitespace-pre-line">{aiAnalysis.summary}</div>
                 </div>
@@ -365,7 +392,9 @@ ${historyStr}`;
                   {isAnalyzing && (
                     <div className="animate-pulse bg-white/5 p-16 rounded-3xl text-center flex flex-col items-center gap-4">
                       <div className="w-10 h-10 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin"></div>
-                      <span className="text-[12px] font-black uppercase tracking-widest text-slate-500">신경망 분석 엔진 가동 중...</span>
+                      <span className="text-[12px] font-black uppercase tracking-widest text-slate-500">
+                        {isMobile ? '모바일 최적화 분석 가동 중...' : '신경망 분석 엔진 가동 중...'}
+                      </span>
                     </div>
                   )}
                 </div>
@@ -429,7 +458,7 @@ ${historyStr}`;
               </div>
             </div>
             <div className="p-5 bg-slate-950/50 border-t border-white/5 flex justify-between items-center">
-              <span className="text-[10px] font-black text-slate-600 uppercase tracking-widest italic tracking-wider">Neural Analysis Engine v14.8</span>
+              <span className="text-[10px] font-black text-slate-600 uppercase tracking-widest italic tracking-wider">Neural Analysis Engine v14.9</span>
               <button onClick={clearHistory} className="px-5 py-2.5 text-[10px] font-black uppercase tracking-widest text-slate-500 hover:text-rose-500 transition-all bg-white/5 hover:bg-rose-500/10 rounded-xl border border-white/5 shadow-inner active:scale-95">Clear Logs</button>
             </div>
           </div>
@@ -437,7 +466,7 @@ ${historyStr}`;
       )}
 
       <header className="max-w-screen-2xl mx-auto px-4 py-3 flex justify-between items-center border-b border-white/5 bg-slate-950/80 backdrop-blur-md sticky top-0 z-50">
-        <h1 className="text-lg font-black text-white tracking-tighter italic uppercase flex items-baseline gap-1.5">BIT COMPASS <span className="text-amber-500">PRO</span> <span className="text-[12px] font-bold text-slate-700 tracking-widest not-italic">v14.8</span></h1>
+        <h1 className="text-lg font-black text-white tracking-tighter italic uppercase flex items-baseline gap-1.5">BIT COMPASS <span className="text-amber-500">PRO</span> <span className="text-[12px] font-bold text-slate-700 tracking-widest not-italic">v14.9</span></h1>
         <div className="flex items-center gap-2">
           <button onClick={() => setShowHistory(true)} className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-900/50 hover:bg-white/5 rounded-xl border border-white/5 transition-colors active:scale-95">
             <svg className="w-4 h-4 text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
