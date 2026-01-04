@@ -156,11 +156,12 @@ const App: React.FC = () => {
     try {
       const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
       const historyStr = historyData.slice(0, 15).map(h => 
-        `[${h.date}] $${h.price.toLocaleString()}, Osc: ${h.oscillator.toFixed(2)}, F&G: ${Math.round(h.fng)}, MVRV: ${h.mvrv.toFixed(2)}`
+        `[${h.date}] Price: $${h.price.toLocaleString()}, Osc: ${h.oscillator.toFixed(2)}, F&G: ${Math.round(h.fng)}, MVRV: ${h.mvrv.toFixed(2)}`
       ).join('\n');
       
-      const prompt = `퀀트 분석가로서 아래 데이터를 통해 현재 시장의 구조적 위치를 진단하세요. 
-일반 투자자가 오판하지 않도록 위험과 기회를 균형 있게 한글로 설명하십시오.
+      const prompt = `비트코인 퀀트 전략가로서 다음 데이터를 정밀 진단하십시오.
+1. 'summary'에는 현재 시장의 거시적 위치, 모델 궤도 내에서의 상대적 강도, 그리고 각 국면(매집/균형/과열)에 따른 대응 원칙을 '매우 구체적이고 전문적인 논조'로 작성하세요. (최소 500자 이상의 풍부한 분석 필수)
+2. 'insights'에는 각 로그 시점별로 가격과 보조지표가 시사하는 바를 해석한 '개별 통찰'을 한글로 상세히 제공하십시오.
 
 DATA:
 ${historyStr}`;
@@ -195,7 +196,7 @@ ${historyStr}`;
         setAiAnalysis(JSON.parse(response.text));
       }
     } catch (e) { 
-      setAiAnalysis({ summary: "데이터 기반의 중립적 시장 진단 결과입니다. 모델 궤도 내에서 안정적인 흐름을 유지하고 있습니다.", insights: [] });
+      setAiAnalysis({ summary: "데이터 연산 중 지연이 발생했습니다. 모델 가격 궤도 내에서 안정적인 흐름을 유지하고 있으며, 주요 변곡점 발생 시 알림을 제공하겠습니다.", insights: [] });
     } finally { setIsAnalyzing(false); }
   };
 
@@ -284,22 +285,22 @@ ${historyStr}`;
 
   const getStatusLabel = (status: MarketStatus) => {
     if (status === MarketStatus.ACCUMULATE) return { 
-      text: '저평가 분할 매집 우위', 
-      desc: '통계적 저점 형성 구간', 
+      text: '저평가 매집 국면', 
+      desc: '통계적 저점 형성 및 매집 우위 구간', 
       headline: '가치 하단 임계점 진입: 장기 관점의 분할 매수가 통계적으로 유리한 구간이며, 매크로 지표를 병행 확인하십시오.', 
       color: 'text-emerald-400', 
       bg: 'bg-emerald-500/10' 
     };
     if (status === MarketStatus.SELL) return { 
-      text: '고평가 단계적 실현', 
-      desc: '시장 과열 및 탐욕 구간', 
+      text: '고평가 과열 국면', 
+      desc: '심리적 과열 및 리스크 관리 구간', 
       headline: '가치 상단 임계점 진입: 과열된 심리에 따른 변동성 확대가 우려되므로, 원칙적인 수익 실현 및 리스크 관리가 필요합니다.', 
       color: 'text-rose-400', 
       bg: 'bg-rose-500/10' 
     };
     return { 
-      text: '적정 가치 균형 횡보', 
-      desc: '중립적 추세 관망 유지', 
+      text: '가치 균형 구간', 
+      desc: '중립적 추세 유지 및 관망 구간', 
       headline: '모델 균형 가격대 안착: 적정 가치 궤도 내에서의 움직임이 예상되며, 추가 추세 확정 전까지 기존 비중을 유지하십시오.', 
       color: 'text-amber-400', 
       bg: 'bg-amber-500/10' 
@@ -346,35 +347,35 @@ ${historyStr}`;
   return (
     <div className="min-h-screen bg-slate-950 text-slate-300 font-sans text-left relative overflow-x-hidden">
       {showHistory && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/95 backdrop-blur-md" onClick={() => setShowHistory(false)}>
-          <div className="bg-slate-900 w-full max-w-6xl max-h-[92vh] rounded-[2rem] border border-white/10 flex flex-col overflow-hidden shadow-2xl" onClick={e => e.stopPropagation()}>
-            <div className="px-6 py-5 border-b border-white/5 flex justify-between items-center bg-slate-900/50">
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-2 md:p-4 bg-black/95 backdrop-blur-md" onClick={() => setShowHistory(false)}>
+          <div className="bg-slate-900 w-full max-w-6xl max-h-[95vh] rounded-[2rem] border border-white/10 flex flex-col overflow-hidden shadow-2xl" onClick={e => e.stopPropagation()}>
+            <div className="px-5 py-5 border-b border-white/5 flex justify-between items-center bg-slate-900/50">
               <h3 className="text-base font-black italic uppercase tracking-widest text-white">Neural Snapshot Log</h3>
-              <button onClick={() => setShowHistory(false)} className="p-2 hover:bg-white/5 rounded-full transition-colors">
+              <button onClick={() => setShowHistory(false)} className="p-2 hover:bg-white/5 rounded-full transition-colors active:scale-90">
                 <svg className="w-6 h-6 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M6 18L18 6M6 6l12 12"></path></svg>
               </button>
             </div>
-            <div className="flex-1 overflow-y-auto px-4 py-6 custom-scrollbar">
+            <div className="flex-1 overflow-y-auto px-1 md:px-4 py-6 custom-scrollbar">
               {aiAnalysis ? (
-                <div className="mb-6 bg-indigo-500/10 border border-indigo-500/30 rounded-2xl p-6 text-[13px] leading-relaxed italic text-indigo-100 shadow-inner">
-                  <div className="flex items-center gap-2 mb-3">
-                    <span className="w-2 h-2 bg-indigo-400 rounded-full animate-ping"></span>
+                <div className="mb-8 bg-indigo-500/10 border border-indigo-500/30 rounded-3xl p-6 text-[14px] md:text-[15px] leading-relaxed italic text-indigo-100 shadow-2xl mx-1">
+                  <div className="flex items-center gap-2 mb-4">
+                    <span className="w-2.5 h-2.5 bg-indigo-400 rounded-full animate-ping"></span>
                     <span className="font-black uppercase tracking-widest text-indigo-400 text-[11px]">Quant Strategy Synthesis</span>
                   </div>
-                  {aiAnalysis.summary}
+                  <div className="whitespace-pre-line">{aiAnalysis.summary}</div>
                 </div>
-              ) : (isAnalyzing && <div className="mb-6 animate-pulse bg-white/5 p-10 rounded-2xl text-center text-[11px] font-black uppercase tracking-widest text-slate-500">분석 엔진 가동 중...</div>)}
+              ) : (isAnalyzing && <div className="mb-8 animate-pulse bg-white/5 p-16 rounded-3xl text-center text-[12px] font-black uppercase tracking-widest text-slate-500 mx-1">신경망 분석 엔진 가동 중...</div>)}
               
-              <div className="grid grid-cols-[1.5fr_3fr_2fr_1.5fr_1fr_2fr] gap-2 px-3 py-3 text-[11px] font-black uppercase text-slate-600 tracking-tighter border-b border-white/5 mb-3">
+              <div className="grid grid-cols-[1.1fr_1.8fr_1fr_0.8fr_0.8fr_0.8fr] md:grid-cols-[1.5fr_3fr_2fr_1.5fr_1fr_2fr] gap-0.5 md:gap-1 px-1 md:px-3 py-4 text-[9px] md:text-[11px] font-black uppercase text-slate-600 tracking-tighter border-b border-white/5 mb-3 sticky top-0 bg-slate-900 z-10">
                 <div className="pl-1">Date</div>
-                <div className="text-center">Analysis</div>
+                <div className="text-center">State Analysis</div>
                 <div className="text-right">DEV</div>
                 <div className="text-right">OSC</div>
                 <div className="text-right">F&G</div>
                 <div className="text-right pr-1">MVRV</div>
               </div>
 
-              <div className="space-y-1.5 mb-10">
+              <div className="space-y-1 md:space-y-2 mb-10">
                 {history.length === 0 ? <div className="py-24 text-center opacity-20 text-[12px] uppercase font-black tracking-widest italic">No Data (Log Cleared)</div> : 
                   history.map((h, idx) => {
                     const hStyle = getStatusLabel(h.status);
@@ -402,16 +403,31 @@ ${historyStr}`;
                     const nextDevVal = nextH ? nextH.price - nextH.fair : undefined;
 
                     return (
-                      <div key={h.id}>
-                        <div onClick={() => insight && setExpandedDate(isExpanded ? null : h.date)} className={`grid grid-cols-[1.5fr_3fr_2fr_1.5fr_1fr_2fr] gap-2 px-3 py-4 rounded-xl text-[10px] items-center transition-colors cursor-pointer tracking-tighter ${isExpanded ? 'bg-white/10' : 'hover:bg-white/5'}`}>
-                          <div className="font-bold mono text-slate-400 whitespace-nowrap pl-1">{h.date}</div>
-                          <div className="text-center"><span className={`px-2 py-0.5 rounded-md font-black text-[9px] ${hStyle.bg} ${hStyle.color} tracking-tighter uppercase whitespace-nowrap`}>{hStyle.text}</span></div>
+                      <div key={h.id} className="relative mx-1">
+                        <div 
+                          onClick={(e) => {
+                             e.preventDefault();
+                             e.stopPropagation();
+                             if (insight) setExpandedDate(isExpanded ? null : h.date);
+                          }} 
+                          className={`grid grid-cols-[1.1fr_1.8fr_1fr_0.8fr_0.8fr_0.8fr] md:grid-cols-[1.5fr_3fr_2fr_1.5fr_1fr_2fr] gap-0.5 md:gap-1 px-1 md:px-3 py-5 rounded-2xl text-[10px] md:text-[11px] items-center transition-all cursor-pointer select-none active:bg-white/20 touch-manipulation border border-transparent ${isExpanded ? 'bg-white/10 border-white/10 ring-1 ring-white/10 shadow-lg' : 'hover:bg-white/5'}`}
+                        >
+                          <div className="font-bold mono text-slate-400 whitespace-nowrap pl-0.5">{h.date}</div>
+                          <div className="text-center"><span className={`px-1 py-0.5 rounded-md font-black text-[7.5px] md:text-[9px] ${hStyle.bg} ${hStyle.color} tracking-tighter uppercase whitespace-nowrap`}>{hStyle.text}</span></div>
                           <div className="text-right mono italic" style={{ color: getIndicatorColor(devVal, nextDevVal, 'dev') }}>{devVal >= 0 ? '+' : ''}{Math.round(devVal).toLocaleString()}</div>
                           <div className="text-right mono" style={{ color: getIndicatorColor(h.oscillator, nextH?.oscillator, 'osc') }}>{h.oscillator.toFixed(2)}</div>
                           <div className="text-right mono" style={{ color: getIndicatorColor(h.fng, nextH?.fng, 'fng') }}>{Math.round(h.fng)}</div>
-                          <div className="text-right mono pr-1" style={{ color: getIndicatorColor(h.mvrv, nextH?.mvrv, 'mvrv') }}>{h.mvrv.toFixed(2)}</div>
+                          <div className="text-right mono pr-0.5" style={{ color: getIndicatorColor(h.mvrv, nextH?.mvrv, 'mvrv') }}>{h.mvrv.toFixed(2)}</div>
                         </div>
-                        {isExpanded && insight && <div className="px-5 py-4 bg-indigo-500/5 border-l-2 border-indigo-500 mx-3 mb-3 text-[12px] text-indigo-300 font-bold italic leading-relaxed">{insight}</div>}
+                        {isExpanded && insight && (
+                          <div className="px-4 py-5 bg-indigo-500/10 border-l-4 border-indigo-500 mt-1 mb-4 text-[13px] md:text-[14px] text-indigo-200 font-bold italic leading-relaxed animate-in fade-in slide-in-from-top-2 duration-300 rounded-r-xl">
+                            <div className="flex items-center gap-2 mb-2">
+                                <svg className="w-3.5 h-3.5 text-indigo-400" fill="currentColor" viewBox="0 0 20 20"><path d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-11a1 1 0 10-2 0v2H7a1 1 0 100 2h2v2a1 1 0 102 0v-2h2a1 1 0 100-2h-2V7z"></path></svg>
+                                <span className="uppercase tracking-widest text-[9px] text-indigo-400 not-italic">Neural Insight for {h.date}</span>
+                            </div>
+                            {insight}
+                          </div>
+                        )}
                       </div>
                     );
                   })
@@ -419,21 +435,21 @@ ${historyStr}`;
               </div>
             </div>
             <div className="p-5 bg-slate-950/50 border-t border-white/5 flex justify-between items-center">
-              <span className="text-[9px] font-black text-slate-600 uppercase tracking-widest italic tracking-wider">Neural Analysis Engine v14.2</span>
-              <button onClick={clearHistory} className="px-4 py-2 text-[9px] font-black uppercase tracking-widest text-slate-500 hover:text-rose-500 transition-all bg-white/5 hover:bg-rose-500/10 rounded-lg border border-white/5 shadow-inner active:scale-95">Clear All Logs</button>
+              <span className="text-[10px] font-black text-slate-600 uppercase tracking-widest italic tracking-wider">Neural Analysis Engine v14.6</span>
+              <button onClick={clearHistory} className="px-5 py-2.5 text-[10px] font-black uppercase tracking-widest text-slate-500 hover:text-rose-500 transition-all bg-white/5 hover:bg-rose-500/10 rounded-xl border border-white/5 shadow-inner active:scale-95">Clear All Logs</button>
             </div>
           </div>
         </div>
       )}
 
       <header className="max-w-screen-2xl mx-auto px-4 py-3 flex justify-between items-center border-b border-white/5 bg-slate-950/80 backdrop-blur-md sticky top-0 z-50">
-        <h1 className="text-lg font-black text-white tracking-tighter italic uppercase flex items-baseline gap-1.5">BIT COMPASS <span className="text-amber-500">PRO</span> <span className="text-[12px] font-bold text-slate-700 tracking-widest not-italic">v14.2</span></h1>
+        <h1 className="text-lg font-black text-white tracking-tighter italic uppercase flex items-baseline gap-1.5">BIT COMPASS <span className="text-amber-500">PRO</span> <span className="text-[12px] font-bold text-slate-700 tracking-widest not-italic">v14.6</span></h1>
         <div className="flex items-center gap-2">
-          <button onClick={() => setShowHistory(true)} className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-900/50 hover:bg-white/5 rounded-xl border border-white/5 transition-colors">
+          <button onClick={() => setShowHistory(true)} className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-900/50 hover:bg-white/5 rounded-xl border border-white/5 transition-colors active:scale-95">
             <svg className="w-4 h-4 text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
             <span className="text-[11px] font-black uppercase tracking-widest text-slate-400">Log</span>
           </button>
-          <button onClick={init} className="p-2 bg-slate-900/50 hover:bg-white/5 rounded-lg border border-white/5 transition-colors"><svg className="w-5 h-5 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357-2H15"></path></svg></button>
+          <button onClick={init} className="p-2 bg-slate-900/50 hover:bg-white/5 rounded-lg border border-white/5 transition-colors active:scale-95"><svg className="w-5 h-5 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357-2H15"></path></svg></button>
         </div>
       </header>
 

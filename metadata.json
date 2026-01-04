@@ -1,5 +1,6 @@
+
 {
-  "name": "BIT COMPASS PRO v14.2 네이버",
-  "description": "Final PWA stability patch. Explicitly set start_url to index.html and synchronized versioning across all files to resolve 404 errors caused by ephemeral sandbox URLs.",
+  "name": "BIT COMPASS PRO v14.6",
+  "description": "Refined market state labels to specific phase descriptions (e.g., 'Underpriced Accumulation Phase'). Optimized mobile list layout for longer labels and enhanced AI synthesis with contextual phase analysis.",
   "requestFramePermissions": []
 }
