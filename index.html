@@ -4,7 +4,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-    <title>BTC 통합 투자 나침반 v9.9</title>
+    <title>BIT COMPASS PRO v13.5</title>
     
     <!-- PWA 메타 태그 -->
     <link rel="manifest" href="manifest.json" />
@@ -28,16 +28,15 @@
         --border-color: #f3f4f6;
       }
 
-      /* 전체 페이지 스크롤바 커스텀: 숨김 상태 유지 */
       html {
-        scrollbar-width: none; /* Firefox */
-        -ms-overflow-style: none; /* IE/Edge */
+        scrollbar-width: none;
+        -ms-overflow-style: none;
         -webkit-tap-highlight-color: transparent;
       }
 
       body {
-        background-color: #020617; /* slate-950 */
-        color: #cbd5e1; /* slate-300 */
+        background-color: #020617;
+        color: #cbd5e1;
         font-family: "Pretendard Variable", Pretendard, -apple-system, BlinkMacSystemFont, system-ui, Roboto, "Helvetica Neue", "Segoe UI", "Apple SD Gothic Neo", "Noto Sans KR", "Malgun Gothic", "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", sans-serif;
         margin: 0;
         padding: 0;
@@ -45,7 +44,6 @@
         overflow-x: hidden;
       }
 
-      /* 웹킷 브라우저 스크롤바 최적화: 스크롤 중에만 노출 */
       ::-webkit-scrollbar {
         width: 1px;
         height: 1px;
@@ -60,7 +58,6 @@
         border-radius: 10px;
       }
       
-      /* 스크롤하거나 상호작용 할 때만 살짝 노출 */
       *:hover::-webkit-scrollbar-thumb,
       *:active::-webkit-scrollbar-thumb {
         background: rgba(255, 255, 255, 0.15);
@@ -83,13 +80,6 @@
       .custom-scrollbar:active::-webkit-scrollbar-thumb {
         background: rgba(255, 255, 255, 0.15);
       }
-
-      @media (max-width: 768px) {
-        ::-webkit-scrollbar {
-          width: 1px;
-          height: 1px;
-        }
-      }
     </style>
     <script type="importmap">
 {
@@ -106,17 +96,6 @@
 </head>
   <body>
     <div id="root"></div>
-    <script>
-      if ('serviceWorker' in navigator) {
-        window.addEventListener('load', () => {
-          navigator.serviceWorker.register('./sw.js').then(reg => {
-            console.log('SW registered:', reg);
-          }).catch(err => {
-            console.log('SW reg error:', err);
-          });
-        });
-      }
-    </script>
   <script type="module" src="/index.tsx"></script>
 </body>
 </html>

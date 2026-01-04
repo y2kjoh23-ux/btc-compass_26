@@ -15,6 +15,10 @@ interface StageCardProps {
 }
 
 const StageCard: React.FC<StageCardProps> = ({ title, stages, currentVal, displayValue, subLabel }) => {
+  // 내림차순으로 정렬된 stages에서 현재 값이 threshold보다 크거나 같은 첫 번째 단계를 찾음
+  // 이를 통해 25, 45, 55 등의 경계값이 하위 구간이 아닌 정확한 해당 구간에 배정됨
+  const activeIndex = stages.findIndex(stage => currentVal >= stage.threshold);
+
   return (
     <div className="bg-slate-900/50 backdrop-blur-md border border-white/5 p-6 rounded-[1.5rem] shadow-xl text-left flex flex-col">
       {/* 지표 제목 및 현재 값 통합 영역 */}
@@ -34,15 +38,7 @@ const StageCard: React.FC<StageCardProps> = ({ title, stages, currentVal, displa
       {/* 단계 리스트 영역 */}
       <div className="grid grid-cols-1 gap-2">
         {stages.map((stage, idx) => {
-          let isActive = false;
-          
-          if (idx === 0) {
-            isActive = currentVal > stage.threshold;
-          } else if (idx === stages.length - 1) {
-            isActive = currentVal <= stages[idx - 1].threshold;
-          } else {
-            isActive = currentVal <= stages[idx - 1].threshold && currentVal > stage.threshold;
-          }
+          const isActive = idx === activeIndex;
 
           return (
             <div 

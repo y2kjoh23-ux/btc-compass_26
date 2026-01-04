@@ -100,6 +100,7 @@ const App: React.FC = () => {
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [aiAnalysis, setAiAnalysis] = useState<AIAnalysis | null>(null);
   const [expandedDate, setExpandedDate] = useState<string | null>(null);
+  const [isMounted, setIsMounted] = useState(false); 
   
   const lastClearTimestamp = useRef<number>(0);
 
@@ -112,6 +113,7 @@ const App: React.FC = () => {
 
   useEffect(() => { 
     init();
+    setTimeout(() => setIsMounted(true), 100);
     const saved = localStorage.getItem('btc_compass_history');
     if (saved) {
       try {
@@ -137,12 +139,11 @@ const App: React.FC = () => {
   };
 
   const formatDate = (date: Date) => {
-    const yy = String(date.getFullYear()).slice(2);
     const m = date.getMonth() + 1;
-    const dd = date.getDate();
-    const hh = String(date.getHours()).padStart(2, '0');
-    const mn = String(date.getMinutes()).padStart(2, '0');
-    return `${yy}.${m}.${dd}.${hh}:${mn}`;
+    const d = date.getDate();
+    const h = date.getHours();
+    // 26.1.4.19h -> 1.4.19h 단순화
+    return `${m}.${d}.${h}h`;
   };
 
   const stats = useMemo(() => {
@@ -218,7 +219,6 @@ ${historyStr}`;
       const lastEntry = updated[0];
       const backfilledLogs: Snapshot[] = [];
       
-      // 삭제 직후라면 현재 기준 정확히 4시간 전 1개 데이터만 생성되도록 보정
       const startTimeForBackfill = lastEntry ? lastEntry.timestamp : (now - 4 * 60 * 60 * 1000);
       let cursor = startTimeForBackfill;
 
@@ -311,7 +311,6 @@ ${historyStr}`;
     e.preventDefault();
     e.stopPropagation();
     
-    // confirm 창 호출이 보장되도록 설정
     const isConfirmed = window.confirm('모든 로그 기록을 영구적으로 삭제하시겠습니까?');
     
     if (isConfirmed) {
@@ -367,8 +366,7 @@ ${historyStr}`;
                 </div>
               ) : (isAnalyzing && <div className="mb-6 animate-pulse bg-white/5 p-10 rounded-2xl text-center text-[11px] font-black uppercase tracking-widest text-slate-500">분석 엔진 가동 중...</div>)}
               
-              {/* 로그 리스트 헤더 - 밸런스 조정된 그리드 비율 */}
-              <div className="grid grid-cols-[2.2fr_3fr_2fr_1.5fr_1fr_2.3fr] gap-2 px-3 py-3 text-[11px] font-black uppercase text-slate-600 tracking-tighter border-b border-white/5 mb-3">
+              <div className="grid grid-cols-[1.5fr_3fr_2fr_1.5fr_1fr_2fr] gap-2 px-3 py-3 text-[11px] font-black uppercase text-slate-600 tracking-tighter border-b border-white/5 mb-3">
                 <div className="pl-1">Date</div>
                 <div className="text-center">Analysis</div>
                 <div className="text-right">DEV</div>
@@ -386,10 +384,10 @@ ${historyStr}`;
                     const devVal = h.price - h.fair;
                     const nextH = history[idx + 1];
 
-                    const getIndicatorColor = (val: number, prevVal: number | undefined, type: 'osc' | 'fng' | 'mvrv') => {
+                    const getIndicatorColor = (val: number, prevVal: number | undefined, type: 'osc' | 'fng' | 'mvrv' | 'dev') => {
                       if (prevVal === undefined) return 'text-slate-500';
                       let currentStr, prevStr;
-                      if (type === 'fng') {
+                      if (type === 'fng' || type === 'dev') {
                         currentStr = Math.round(val).toString();
                         prevStr = Math.round(prevVal).toString();
                       } else {
@@ -402,13 +400,15 @@ ${historyStr}`;
                       return cNum > pNum ? COLORS.riskUp : COLORS.riskDown;
                     };
 
+                    const nextDevVal = nextH ? nextH.price - nextH.fair : undefined;
+
                     return (
                       <div key={h.id}>
-                        {/* 로그 리스트 행 - 헤더와 동일한 그리드 비율 */}
-                        <div onClick={() => insight && setExpandedDate(isExpanded ? null : h.date)} className={`grid grid-cols-[2.2fr_3fr_2fr_1.5fr_1fr_2.3fr] gap-2 px-3 py-4 rounded-xl text-[10px] items-center transition-colors cursor-pointer tracking-tighter ${isExpanded ? 'bg-white/10' : 'hover:bg-white/5'}`}>
+                        <div onClick={() => insight && setExpandedDate(isExpanded ? null : h.date)} className={`grid grid-cols-[1.5fr_3fr_2fr_1.5fr_1fr_2fr] gap-2 px-3 py-4 rounded-xl text-[10px] items-center transition-colors cursor-pointer tracking-tighter ${isExpanded ? 'bg-white/10' : 'hover:bg-white/5'}`}>
                           <div className="font-bold mono text-slate-400 whitespace-nowrap pl-1">{h.date}</div>
                           <div className="text-center"><span className={`px-2 py-0.5 rounded-md font-black text-[9px] ${hStyle.bg} ${hStyle.color} tracking-tighter uppercase whitespace-nowrap`}>{hStyle.text}</span></div>
-                          <div className="text-right font-bold italic mono text-white">{devVal >= 0 ? '+' : ''}{Math.round(devVal).toLocaleString()}</div>
+                          {/* DEV 스타일 수정: OSC와 동일하게 동적 색상 적용 및 볼드 제거 */}
+                          <div className="text-right mono italic" style={{ color: getIndicatorColor(devVal, nextDevVal, 'dev') }}>{devVal >= 0 ? '+' : ''}{Math.round(devVal).toLocaleString()}</div>
                           <div className="text-right mono" style={{ color: getIndicatorColor(h.oscillator, nextH?.oscillator, 'osc') }}>{h.oscillator.toFixed(2)}</div>
                           <div className="text-right mono" style={{ color: getIndicatorColor(h.fng, nextH?.fng, 'fng') }}>{Math.round(h.fng)}</div>
                           <div className="text-right mono pr-1" style={{ color: getIndicatorColor(h.mvrv, nextH?.mvrv, 'mvrv') }}>{h.mvrv.toFixed(2)}</div>
@@ -421,7 +421,7 @@ ${historyStr}`;
               </div>
             </div>
             <div className="p-5 bg-slate-950/50 border-t border-white/5 flex justify-between items-center">
-              <span className="text-[9px] font-black text-slate-600 uppercase tracking-widest italic tracking-wider">Neural Analysis Engine v13.2</span>
+              <span className="text-[9px] font-black text-slate-600 uppercase tracking-widest italic tracking-wider">Neural Analysis Engine v13.6</span>
               <button onClick={clearHistory} className="px-4 py-2 text-[9px] font-black uppercase tracking-widest text-slate-500 hover:text-rose-500 transition-all bg-white/5 hover:bg-rose-500/10 rounded-lg border border-white/5 shadow-inner active:scale-95">Clear All Logs</button>
             </div>
           </div>
@@ -429,7 +429,7 @@ ${historyStr}`;
       )}
 
       <header className="max-w-screen-2xl mx-auto px-4 py-3 flex justify-between items-center border-b border-white/5 bg-slate-950/80 backdrop-blur-md sticky top-0 z-50">
-        <h1 className="text-lg font-black text-white tracking-tighter italic uppercase flex items-baseline gap-1.5">BIT COMPASS <span className="text-amber-500">PRO</span> <span className="text-[12px] font-bold text-slate-700 tracking-widest not-italic">v13.2</span></h1>
+        <h1 className="text-lg font-black text-white tracking-tighter italic uppercase flex items-baseline gap-1.5">BIT COMPASS <span className="text-amber-500">PRO</span> <span className="text-[12px] font-bold text-slate-700 tracking-widest not-italic">v13.6</span></h1>
         <div className="flex items-center gap-2">
           <button onClick={() => setShowHistory(true)} className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-900/50 hover:bg-white/5 rounded-xl border border-white/5 transition-colors">
             <svg className="w-4 h-4 text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
@@ -478,24 +478,26 @@ ${historyStr}`;
           <StageCard title="MVRV Z-SCORE" displayValue={stats.mvrvEst.toFixed(2)} subLabel="" stages={STAGES.MVRV} currentVal={stats.mvrvEst} />
         </div>
 
-        <section className="bg-slate-300 p-2 rounded-[3.5rem] border border-slate-400 shadow-2xl relative overflow-hidden h-[450px] md:h-[650px]">
-          <ResponsiveContainer width="100%" height="100%">
-            <ComposedChart data={chartData} margin={{ top: 30, right: 10, left: 10, bottom: 30 }}>
-              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#cbd5e1" />
-              <XAxis dataKey="timestamp" type="number" domain={[new Date('2017-07-01').getTime(), 'dataMax']} hide={true} />
-              <YAxis type="number" domain={[2000, 500000]} scale="log" hide={true} />
-              <Tooltip content={<CustomTooltip />} cursor={{stroke: '#64748b', strokeWidth: 1}} />
-              {HALVING_DATES.map((hv, idx) => (
-                <ReferenceLine key={idx} x={new Date(hv.date).getTime()} stroke={COLORS.halving} strokeWidth={1} strokeDasharray="5 5">
-                  <Label value={hv.label} position="top" fill={COLORS.halving} fontSize={10} fontWeight="900" offset={10} />
-                </ReferenceLine>
-              ))}
-              <Line name="상단 밴드" dataKey="upper" stroke={COLORS.upper} strokeWidth={1} dot={false} strokeDasharray="4 4" />
-              <Line name="하단 밴드" dataKey="lower" stroke={COLORS.lower} strokeWidth={1} dot={false} strokeDasharray="4 4" />
-              <Line name="적정 가치" dataKey="fair" stroke={COLORS.fair} strokeWidth={2.5} dot={false} />
-              <Line name="시장 가격" dataKey="price" stroke={COLORS.price} strokeWidth={4} dot={false} connectNulls={true} />
-            </ComposedChart>
-          </ResponsiveContainer>
+        <section className="bg-slate-300 p-2 rounded-[3.5rem] border border-slate-400 shadow-2xl relative overflow-hidden h-[450px] md:h-[650px] min-h-[450px] w-full min-w-0">
+          {isMounted && (
+            <ResponsiveContainer width="99%" height="100%" debounce={50}>
+              <ComposedChart data={chartData} margin={{ top: 30, right: 10, left: 10, bottom: 30 }}>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#cbd5e1" />
+                <XAxis dataKey="timestamp" type="number" domain={[new Date('2017-07-01').getTime(), 'dataMax']} hide={true} />
+                <YAxis type="number" domain={[2000, 500000]} scale="log" hide={true} />
+                <Tooltip content={<CustomTooltip />} cursor={{stroke: '#64748b', strokeWidth: 1}} />
+                {HALVING_DATES.map((hv, idx) => (
+                  <ReferenceLine key={idx} x={new Date(hv.date).getTime()} stroke={COLORS.halving} strokeWidth={1} strokeDasharray="5 5">
+                    <Label value={hv.label} position="top" fill={COLORS.halving} fontSize={10} fontWeight="900" offset={10} />
+                  </ReferenceLine>
+                ))}
+                <Line name="상단 밴드" dataKey="upper" stroke={COLORS.upper} strokeWidth={1} dot={false} strokeDasharray="4 4" />
+                <Line name="하단 밴드" dataKey="lower" stroke={COLORS.lower} strokeWidth={1} dot={false} strokeDasharray="4 4" />
+                <Line name="적정 가치" dataKey="fair" stroke={COLORS.fair} strokeWidth={2.5} dot={false} />
+                <Line name="시장 가격" dataKey="price" stroke={COLORS.price} strokeWidth={4} dot={false} connectNulls={true} />
+              </ComposedChart>
+            </ResponsiveContainer>
+          )}
         </section>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-10 text-left">

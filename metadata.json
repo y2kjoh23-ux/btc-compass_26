@@ -1,6 +1,5 @@
-
 {
-  "name": "BIT COMPASS PRO v13.2",
-  "description": "Log layout balancing, DEV color fixed to white, and strict backfill limitation for reliability.",
+  "name": "BIT COMPASS PRO v13.7",
+  "description": "Simplified log date format (m.d.hh) and enhanced DEV metric styling with dynamic color shifts matching OSC behavior.",
   "requestFramePermissions": []
 }

@@ -10,7 +10,7 @@ export const A_DECAY = 1.48e-15;
 export const B_DECAY = 5.25;
 
 /**
- * 지표 판정 기준: 사용자 원문 Streamlit v8.2 텍스트 및 구성 완벽 복구
+ * 지표 판정 기준: 경계값 충돌을 방지하기 위해 내림차순(Descending) 판정 로직에 최적화된 임계값 설정
  */
 export const STAGES = {
   OSCILLATOR: [
