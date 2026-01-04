@@ -1,6 +1,6 @@
 
 {
-  "name": "BIT COMPASS PRO v12.5",
-  "description": "Custom log format YY:MMDD:HHMM, Halving vertical lines in chart, and robust 12H logging control.",
+  "name": "BIT COMPASS PRO v13.2",
+  "description": "Log layout balancing, DEV color fixed to white, and strict backfill limitation for reliability.",
   "requestFramePermissions": []
 }

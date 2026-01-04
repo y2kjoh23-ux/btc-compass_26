@@ -15,7 +15,9 @@ const COLORS = {
   fair: '#d97706',
   lower: '#047857',
   price: '#1d4ed8',
-  halving: '#f59e0b'
+  halving: '#f59e0b',
+  riskUp: '#ef4444', 
+  riskDown: '#3b82f6', 
 };
 
 const HALVING_DATES = [
@@ -99,7 +101,6 @@ const App: React.FC = () => {
   const [aiAnalysis, setAiAnalysis] = useState<AIAnalysis | null>(null);
   const [expandedDate, setExpandedDate] = useState<string | null>(null);
   
-  // 로그 삭제 직후 재백필링을 방지하기 위한 긴 차단 시간 설정
   const lastClearTimestamp = useRef<number>(0);
 
   const init = async () => {
@@ -135,6 +136,15 @@ const App: React.FC = () => {
     return { model, oscillator, mvrvEst, status, riskPercent };
   };
 
+  const formatDate = (date: Date) => {
+    const yy = String(date.getFullYear()).slice(2);
+    const m = date.getMonth() + 1;
+    const dd = date.getDate();
+    const hh = String(date.getHours()).padStart(2, '0');
+    const mn = String(date.getMinutes()).padStart(2, '0');
+    return `${yy}.${m}.${dd}.${hh}:${mn}`;
+  };
+
   const stats = useMemo(() => {
     if (!data) return null;
     return calculateIndicators(data.currentPrice, new Date(), data.fngValue);
@@ -145,15 +155,14 @@ const App: React.FC = () => {
     setIsAnalyzing(true);
     try {
       const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-      const historyStr = historyData.slice(0, 10).map(h => 
-        `[${h.date}] $${h.price.toLocaleString()}, Osc: ${h.oscillator.toFixed(3)}, F&G: ${h.fng}, MVRV: ${h.mvrv.toFixed(2)}`
+      const historyStr = historyData.slice(0, 15).map(h => 
+        `[${h.date}] $${h.price.toLocaleString()}, Osc: ${h.oscillator.toFixed(2)}, F&G: ${Math.round(h.fng)}, MVRV: ${h.mvrv.toFixed(2)}`
       ).join('\n');
       
-      const prompt = `비트코인 퀀트 전략가로서 12시간 주기 데이터를 진단하세요. 
-현재 추세와 심리를 분석하여 전문적인 투자 전략 가이드를 제시하세요.
-사용자가 시장의 소음(Noise)에 휘둘리지 않도록 데이터 기반의 통찰(Insight)을 한글로 요약하십시오.
+      const prompt = `퀀트 분석가로서 아래 데이터를 통해 현재 시장의 구조적 위치를 진단하세요. 
+일반 투자자가 오판하지 않도록 위험과 기회를 균형 있게 한글로 설명하십시오.
 
-데이터 요약:
+DATA:
 ${historyStr}`;
 
       const response = await ai.models.generateContent({
@@ -164,14 +173,14 @@ ${historyStr}`;
           responseSchema: {
             type: Type.OBJECT,
             properties: {
-              summary: { type: Type.STRING, description: "종합 분석 요약 (한글)" },
+              summary: { type: Type.STRING },
               insights: { 
                 type: Type.ARRAY, 
                 items: {
                   type: Type.OBJECT,
                   properties: {
-                    time: { type: Type.STRING, description: "로그 시간" },
-                    insight: { type: Type.STRING, description: "해당 시점의 지표 해석" }
+                    time: { type: Type.STRING },
+                    insight: { type: Type.STRING }
                   },
                   required: ["time", "insight"]
                 }
@@ -186,14 +195,8 @@ ${historyStr}`;
         setAiAnalysis(JSON.parse(response.text));
       }
     } catch (e) { 
-      console.error("AI Analysis Error:", e);
-      setAiAnalysis({ 
-        summary: "12시간 주기 분석 결과, 시장은 모델의 통계적 궤도 안에서 순항 중입니다. 이격도와 MVRV 지표가 가리키는 중장기 추세에 집중하며 감정적 매매를 배제하십시오.", 
-        insights: [] 
-      });
-    } finally { 
-      setIsAnalyzing(false); 
-    }
+      setAiAnalysis({ summary: "데이터 기반의 중립적 시장 진단 결과입니다. 모델 궤도 내에서 안정적인 흐름을 유지하고 있습니다.", insights: [] });
+    } finally { setIsAnalyzing(false); }
   };
 
   useEffect(() => {
@@ -202,47 +205,55 @@ ${historyStr}`;
     }
   }, [showHistory, history]);
 
-  // 기록 저장 로직 (12시간 간격 고정)
   useEffect(() => {
-    if (data && stats) {
+    if (data && stats && data.intraday.length > 0) {
       const now = Date.now();
-      // 삭제 후 30분간은 어떠한 백필링도 허용하지 않음 (사용자의 의도 존중)
-      if (now - lastClearTimestamp.current < 1800000) return;
+      if (now - lastClearTimestamp.current < 60000) return;
 
+      const LOG_INTERVAL = 4 * 60 * 60 * 1000; 
       const savedHistory = localStorage.getItem('btc_compass_history');
-      let parsed: Snapshot[] = [];
-      try { parsed = savedHistory ? JSON.parse(savedHistory) : []; } catch(e) { parsed = []; }
+      let updated: Snapshot[] = [];
+      try { updated = savedHistory ? JSON.parse(savedHistory) : []; } catch(e) { updated = []; }
       
-      const TWELVE_HOURS = 12 * 60 * 60 * 1000;
-      let updated = [...parsed];
       const lastEntry = updated[0];
+      const backfilledLogs: Snapshot[] = [];
+      
+      // 삭제 직후라면 현재 기준 정확히 4시간 전 1개 데이터만 생성되도록 보정
+      const startTimeForBackfill = lastEntry ? lastEntry.timestamp : (now - 4 * 60 * 60 * 1000);
+      let cursor = startTimeForBackfill;
 
-      if (!lastEntry || (now - lastEntry.timestamp >= TWELVE_HOURS)) {
-        const d = new Date();
-        const yy = String(d.getFullYear()).slice(2);
-        const mm = String(d.getMonth() + 1).padStart(2, '0');
-        const dd = String(d.getDate()).padStart(2, '0');
-        const hh = String(d.getHours()).padStart(2, '0');
-        const mn = String(d.getMinutes()).padStart(2, '0');
-        
-        // 요청된 특수 형식: YY:MMDD:HHMM (예: 25:0524:1430)
-        const formattedDate = `${yy}:${mm}${dd}:${hh}${mn}`;
+      while (true) {
+        cursor += LOG_INTERVAL;
+        if (cursor > now) break;
 
-        const newSnapshot: Snapshot = {
-          id: now,
-          timestamp: now,
-          date: formattedDate,
-          status: stats.status,
-          oscillator: stats.oscillator,
+        const closestPoint = data.intraday.reduce((prev, curr) => {
+          const prevDiff = Math.abs(new Date(prev.date).getTime() - cursor);
+          const currDiff = Math.abs(new Date(curr.date).getTime() - cursor);
+          return currDiff < prevDiff ? curr : prev;
+        });
+
+        const isRecent = Math.abs(new Date(closestPoint.date).getTime() - cursor) < 3600000;
+        const targetPrice = isRecent ? closestPoint.price : data.currentPrice;
+        const targetDate = new Date(cursor);
+        const s = calculateIndicators(targetPrice, targetDate, data.fngValue);
+
+        backfilledLogs.push({
+          id: cursor,
+          timestamp: cursor,
+          date: formatDate(targetDate),
+          status: s.status,
+          oscillator: s.oscillator,
           fng: data.fngValue,
-          mvrv: stats.mvrvEst,
-          price: data.currentPrice,
-          fair: stats.model.weighted
-        };
-        
-        updated = [newSnapshot, ...updated].slice(0, 100);
-        localStorage.setItem('btc_compass_history', JSON.stringify(updated));
-        setHistory(updated);
+          mvrv: s.mvrvEst,
+          price: targetPrice,
+          fair: s.model.weighted
+        });
+      }
+
+      if (backfilledLogs.length > 0) {
+        const finalHistory = [...backfilledLogs.reverse(), ...updated].slice(0, 100);
+        localStorage.setItem('btc_compass_history', JSON.stringify(finalHistory));
+        setHistory(finalHistory);
       }
     }
   }, [data, stats]);
@@ -253,22 +264,14 @@ ${historyStr}`;
       const m = getModelValues(new Date(h.date));
       return { timestamp: new Date(h.date).getTime(), price: h.price, fair: m.weighted, upper: m.upper, lower: m.lower };
     });
-    
     const lastDate = new Date(data.history[data.history.length-1].date);
     const predictions = [];
     for(let i=1; i<=365; i++) {
       const futureDate = new Date(lastDate);
       futureDate.setDate(futureDate.getDate() + i);
       const m = getModelValues(futureDate);
-      predictions.push({
-        timestamp: futureDate.getTime(),
-        price: null,
-        fair: m.weighted,
-        upper: m.upper,
-        lower: m.lower
-      });
+      predictions.push({ timestamp: futureDate.getTime(), price: null, fair: m.weighted, upper: m.upper, lower: m.lower });
     }
-
     return [...historical, ...predictions];
   }, [data]);
 
@@ -281,21 +284,44 @@ ${historyStr}`;
   }, []);
 
   const getStatusLabel = (status: MarketStatus) => {
-    if (status === MarketStatus.ACCUMULATE) return { text: '매집', desc: '저평가 매집 권고', headline: '역사적 저평가 임계점 도달: 공격적 비중 확대 및 매집 적기', color: 'text-emerald-400', bg: 'bg-emerald-500/10' };
-    if (status === MarketStatus.SELL) return { text: '실현', desc: '과열 익절 권고', headline: '통계적 과열 및 탐욕 임계점: 자산 보호를 위한 수익 실현 및 리스크 관리', color: 'text-rose-400', bg: 'bg-rose-500/10' };
-    return { text: '안정', desc: '중립 비중 유지', headline: '적정 가치 궤도 안착: 기계적 DCA 유지 및 시장 추세 관망', color: 'text-amber-400', bg: 'bg-amber-500/10' };
+    if (status === MarketStatus.ACCUMULATE) return { 
+      text: '저평가 분할 매집 우위', 
+      desc: '통계적 저점 형성 구간', 
+      headline: '가치 하단 임계점 진입: 장기 관점의 분할 매수가 통계적으로 유리한 구간이며, 매크로 지표를 병행 확인하십시오.', 
+      color: 'text-emerald-400', 
+      bg: 'bg-emerald-500/10' 
+    };
+    if (status === MarketStatus.SELL) return { 
+      text: '고평가 단계적 실현', 
+      desc: '시장 과열 및 탐욕 구간', 
+      headline: '가치 상단 임계점 진입: 과열된 심리에 따른 변동성 확대가 우려되므로, 원칙적인 수익 실현 및 리스크 관리가 필요합니다.', 
+      color: 'text-rose-400', 
+      bg: 'bg-rose-500/10' 
+    };
+    return { 
+      text: '적정 가치 균형 횡보', 
+      desc: '중립적 추세 관망 유지', 
+      headline: '모델 균형 가격대 안착: 적정 가치 궤도 내에서의 움직임이 예상되며, 추가 추세 확정 전까지 기존 비중을 유지하십시오.', 
+      color: 'text-amber-400', 
+      bg: 'bg-amber-500/10' 
+    };
   };
 
   const clearHistory = (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    if (window.confirm('모든 로그를 영구적으로 삭제하시겠습니까?')) {
-      // 즉시 모든 상태 초기화
+    
+    // confirm 창 호출이 보장되도록 설정
+    const isConfirmed = window.confirm('모든 로그 기록을 영구적으로 삭제하시겠습니까?');
+    
+    if (isConfirmed) {
       lastClearTimestamp.current = Date.now();
       localStorage.removeItem('btc_compass_history');
+      localStorage.removeItem('btc_log_high_freq_start');
       setHistory([]);
       setAiAnalysis(null);
       setExpandedDate(null);
+      alert('삭제되었습니다.');
     }
   };
 
@@ -325,62 +351,67 @@ ${historyStr}`;
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/95 backdrop-blur-md" onClick={() => setShowHistory(false)}>
           <div className="bg-slate-900 w-full max-w-6xl max-h-[92vh] rounded-[2rem] border border-white/10 flex flex-col overflow-hidden shadow-2xl" onClick={e => e.stopPropagation()}>
             <div className="px-6 py-5 border-b border-white/5 flex justify-between items-center bg-slate-900/50">
-              <h3 className="text-base font-black italic uppercase tracking-widest text-white">Neural Snapshot Log (12H Interval)</h3>
+              <h3 className="text-base font-black italic uppercase tracking-widest text-white">Neural Snapshot Log</h3>
               <button onClick={() => setShowHistory(false)} className="p-2 hover:bg-white/5 rounded-full transition-colors">
                 <svg className="w-6 h-6 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M6 18L18 6M6 6l12 12"></path></svg>
               </button>
             </div>
-            
-            <div className="flex-1 overflow-y-auto px-2 py-6 custom-scrollbar">
+            <div className="flex-1 overflow-y-auto px-4 py-6 custom-scrollbar">
               {aiAnalysis ? (
                 <div className="mb-6 bg-indigo-500/10 border border-indigo-500/30 rounded-2xl p-6 text-[13px] leading-relaxed italic text-indigo-100 shadow-inner">
                   <div className="flex items-center gap-2 mb-3">
                     <span className="w-2 h-2 bg-indigo-400 rounded-full animate-ping"></span>
-                    <span className="font-black uppercase tracking-widest text-indigo-400 text-[11px]">Quant Strategy AI Synthesis</span>
+                    <span className="font-black uppercase tracking-widest text-indigo-400 text-[11px]">Quant Strategy Synthesis</span>
                   </div>
                   {aiAnalysis.summary}
                 </div>
-              ) : (
-                isAnalyzing && (
-                  <div className="mb-6 bg-slate-800/50 border border-white/5 rounded-2xl p-6 flex flex-col items-center justify-center py-10 animate-pulse">
-                    <div className="w-8 h-8 border-2 border-amber-500 border-t-transparent rounded-full animate-spin mb-4"></div>
-                    <p className="text-[11px] font-black uppercase tracking-[0.3em] text-slate-500">전략 가이드 생성 중...</p>
-                  </div>
-                )
-              )}
-
-              <div className="grid grid-cols-12 gap-0 px-2 py-3 text-[11px] font-black uppercase text-slate-600 tracking-tighter border-b border-white/5 mb-3">
-                <div className="col-span-3 pl-2">YY:MMDD:HHMM</div>
-                <div className="col-span-3 text-center">Analysis</div>
-                <div className="col-span-2 text-right">DEV</div>
-                <div className="col-span-1 text-right">OSC</div>
-                <div className="col-span-1 text-right">F&G</div>
-                <div className="col-span-2 text-right pr-2">MVRV</div>
+              ) : (isAnalyzing && <div className="mb-6 animate-pulse bg-white/5 p-10 rounded-2xl text-center text-[11px] font-black uppercase tracking-widest text-slate-500">분석 엔진 가동 중...</div>)}
+              
+              {/* 로그 리스트 헤더 - 밸런스 조정된 그리드 비율 */}
+              <div className="grid grid-cols-[2.2fr_3fr_2fr_1.5fr_1fr_2.3fr] gap-2 px-3 py-3 text-[11px] font-black uppercase text-slate-600 tracking-tighter border-b border-white/5 mb-3">
+                <div className="pl-1">Date</div>
+                <div className="text-center">Analysis</div>
+                <div className="text-right">DEV</div>
+                <div className="text-right">OSC</div>
+                <div className="text-right">F&G</div>
+                <div className="text-right pr-1">MVRV</div>
               </div>
 
               <div className="space-y-1.5 mb-10">
-                {history.length === 0 ? <div className="py-24 text-center opacity-20 text-[12px] uppercase font-black tracking-widest italic">No Data (12H Interval Logging)</div> : 
-                  history.map((h) => {
+                {history.length === 0 ? <div className="py-24 text-center opacity-20 text-[12px] uppercase font-black tracking-widest italic">No Data (Log Cleared)</div> : 
+                  history.map((h, idx) => {
                     const hStyle = getStatusLabel(h.status);
                     const insight = aiAnalysis?.insights.find(i => i.time === h.date)?.insight;
                     const isExpanded = expandedDate === h.date;
                     const devVal = h.price - h.fair;
+                    const nextH = history[idx + 1];
+
+                    const getIndicatorColor = (val: number, prevVal: number | undefined, type: 'osc' | 'fng' | 'mvrv') => {
+                      if (prevVal === undefined) return 'text-slate-500';
+                      let currentStr, prevStr;
+                      if (type === 'fng') {
+                        currentStr = Math.round(val).toString();
+                        prevStr = Math.round(prevVal).toString();
+                      } else {
+                        currentStr = val.toFixed(2);
+                        prevStr = prevVal.toFixed(2);
+                      }
+                      if (currentStr === prevStr) return 'text-slate-500';
+                      const cNum = parseFloat(currentStr);
+                      const pNum = parseFloat(prevStr);
+                      return cNum > pNum ? COLORS.riskUp : COLORS.riskDown;
+                    };
 
                     return (
                       <div key={h.id}>
-                        <div onClick={() => insight && setExpandedDate(isExpanded ? null : h.date)} className={`grid grid-cols-12 gap-0 px-2 py-3 rounded-xl text-[10px] items-center transition-colors cursor-pointer tracking-tighter ${isExpanded ? 'bg-white/10' : 'hover:bg-white/5'}`}>
-                          <div className="col-span-3 font-bold mono text-slate-400 whitespace-nowrap pl-1">{h.date}</div>
-                          <div className="col-span-3 text-center px-1">
-                            <span className={`px-2 py-0.5 rounded-md font-black text-[9px] ${hStyle.bg} ${hStyle.color} tracking-tighter whitespace-nowrap inline-block uppercase`}>
-                              {hStyle.text}
-                            </span>
-                          </div>
-                          <div className={`col-span-2 text-right font-bold italic mono whitespace-nowrap ${devVal >= 0 ? 'text-rose-500' : 'text-emerald-500'}`}>
-                            {devVal >= 0 ? '+' : ''}{Math.round(devVal).toLocaleString()}
-                          </div>
-                          <div className="col-span-1 text-right mono text-slate-500 whitespace-nowrap">{h.oscillator.toFixed(2)}</div>
-                          <div className="col-span-1 text-right mono text-slate-500 whitespace-nowrap">{h.fng}</div>
-                          <div className="col-span-2 text-right mono text-slate-500 whitespace-nowrap pr-1">{h.mvrv.toFixed(1)}</div>
+                        {/* 로그 리스트 행 - 헤더와 동일한 그리드 비율 */}
+                        <div onClick={() => insight && setExpandedDate(isExpanded ? null : h.date)} className={`grid grid-cols-[2.2fr_3fr_2fr_1.5fr_1fr_2.3fr] gap-2 px-3 py-4 rounded-xl text-[10px] items-center transition-colors cursor-pointer tracking-tighter ${isExpanded ? 'bg-white/10' : 'hover:bg-white/5'}`}>
+                          <div className="font-bold mono text-slate-400 whitespace-nowrap pl-1">{h.date}</div>
+                          <div className="text-center"><span className={`px-2 py-0.5 rounded-md font-black text-[9px] ${hStyle.bg} ${hStyle.color} tracking-tighter uppercase whitespace-nowrap`}>{hStyle.text}</span></div>
+                          <div className="text-right font-bold italic mono text-white">{devVal >= 0 ? '+' : ''}{Math.round(devVal).toLocaleString()}</div>
+                          <div className="text-right mono" style={{ color: getIndicatorColor(h.oscillator, nextH?.oscillator, 'osc') }}>{h.oscillator.toFixed(2)}</div>
+                          <div className="text-right mono" style={{ color: getIndicatorColor(h.fng, nextH?.fng, 'fng') }}>{Math.round(h.fng)}</div>
+                          <div className="text-right mono pr-1" style={{ color: getIndicatorColor(h.mvrv, nextH?.mvrv, 'mvrv') }}>{h.mvrv.toFixed(2)}</div>
                         </div>
                         {isExpanded && insight && <div className="px-5 py-4 bg-indigo-500/5 border-l-2 border-indigo-500 mx-3 mb-3 text-[12px] text-indigo-300 font-bold italic leading-relaxed">{insight}</div>}
                       </div>
@@ -389,22 +420,16 @@ ${historyStr}`;
                 }
               </div>
             </div>
-            
             <div className="p-5 bg-slate-950/50 border-t border-white/5 flex justify-between items-center">
-              <span className="text-[9px] font-black text-slate-600 uppercase tracking-widest italic">Fixed 12H Logging Sync</span>
-              <button 
-                onClick={clearHistory} 
-                className="px-4 py-2 text-[9px] font-black uppercase tracking-widest text-slate-500 hover:text-rose-500 transition-colors bg-white/5 rounded-lg border border-white/5"
-              >
-                Clear All Logs
-              </button>
+              <span className="text-[9px] font-black text-slate-600 uppercase tracking-widest italic tracking-wider">Neural Analysis Engine v13.2</span>
+              <button onClick={clearHistory} className="px-4 py-2 text-[9px] font-black uppercase tracking-widest text-slate-500 hover:text-rose-500 transition-all bg-white/5 hover:bg-rose-500/10 rounded-lg border border-white/5 shadow-inner active:scale-95">Clear All Logs</button>
             </div>
           </div>
         </div>
       )}
 
       <header className="max-w-screen-2xl mx-auto px-4 py-3 flex justify-between items-center border-b border-white/5 bg-slate-950/80 backdrop-blur-md sticky top-0 z-50">
-        <h1 className="text-lg font-black text-white tracking-tighter italic uppercase flex items-baseline gap-1.5">BIT COMPASS <span className="text-amber-500">PRO</span> <span className="text-[12px] font-bold text-slate-700 tracking-widest not-italic">v12.5</span></h1>
+        <h1 className="text-lg font-black text-white tracking-tighter italic uppercase flex items-baseline gap-1.5">BIT COMPASS <span className="text-amber-500">PRO</span> <span className="text-[12px] font-bold text-slate-700 tracking-widest not-italic">v13.2</span></h1>
         <div className="flex items-center gap-2">
           <button onClick={() => setShowHistory(true)} className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-900/50 hover:bg-white/5 rounded-xl border border-white/5 transition-colors">
             <svg className="w-4 h-4 text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
@@ -418,38 +443,29 @@ ${historyStr}`;
         <section className="bg-gradient-to-br from-slate-900/60 to-slate-950 border border-white/5 rounded-[3rem] p-6 md:p-10 shadow-2xl overflow-hidden relative group">
           <div className="space-y-10">
             <div className="space-y-4">
-              <h2 className="text-6xl font-black text-white italic mono tracking-tighter leading-none">
-                <span className="opacity-50 text-3xl italic">$</span><Space />{data.currentPrice.toLocaleString()}
-              </h2>
+              <h2 className="text-6xl font-black text-white italic mono tracking-tighter leading-none"><span className="opacity-50 text-3xl italic">$</span><Space />{data.currentPrice.toLocaleString()}</h2>
               <div className="flex items-baseline gap-3">
-                <p className="text-xl text-slate-500 font-bold italic mono">
-                  <span className="text-[0.8em] italic opacity-60">₩</span><Space />{Math.round(data.currentPrice * data.usdKrw).toLocaleString()}
-                </p>
-                <p className={`text-xl font-bold mono italic ${deviationKrw >= 0 ? 'text-rose-500' : 'text-emerald-400'}`}>
-                  ({deviationKrw >= 0 ? '+' : '-'} <span className="text-[0.8em] italic opacity-60">₩</span><Space />{Math.abs(Math.round(deviationKrw)).toLocaleString()})
-                </p>
+                <p className="text-xl text-slate-500 font-bold italic mono"><span className="text-[0.8em] italic opacity-60">₩</span><Space />{Math.round(data.currentPrice * data.usdKrw).toLocaleString()}</p>
+                <p className={`text-xl font-bold mono italic ${deviationKrw >= 0 ? 'text-rose-500' : 'text-emerald-400'}`}>({deviationKrw >= 0 ? '+' : '-'} <span className="text-[0.8em] italic opacity-60">₩</span><Space />{Math.abs(Math.round(deviationKrw)).toLocaleString()})</p>
               </div>
             </div>
-
             <div className="bg-white/5 backdrop-blur-sm p-5 md:p-8 rounded-[2.5rem] border border-white/10 space-y-8">
               <div className="flex items-center gap-3 border-b border-white/5 pb-5">
                  <div className={`w-3 h-3 rounded-full ${label.color.replace('text', 'bg')} animate-pulse`}></div>
-                 <h3 className={`text-[17px] md:text-[20px] font-black uppercase tracking-tight ${label.color}`}>
-                   {label.headline}
-                 </h3>
+                 <h3 className={`text-[17px] md:text-[20px] font-black uppercase tracking-tight ${label.color}`}>{label.headline}</h3>
               </div>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-8 md:gap-12 px-1">
                 <div>
                   <p className="text-amber-500 font-black text-[12px] uppercase tracking-widest mb-3 italic">01. 컨텍스트 (Analysis)</p>
-                  <p className="text-[14px] text-slate-300 leading-relaxed font-semibold italic">공포와 탐욕 지수가 현재 가격대에서 어떤 방향성을 암시하는지 모델 데이터를 통해 실시간으로 진단하고 분석합니다.</p>
+                  <p className="text-[14px] text-slate-300 leading-relaxed font-semibold italic">시장의 현재 위치와 통계적 구조를 분석하여 투심에 휘둘리지 않는 객관적 시각을 견지합니다.</p>
                 </div>
                 <div>
                   <p className="text-amber-500 font-black text-[12px] uppercase tracking-widest mb-3 italic">02. 최적화 (Optimization)</p>
-                  <p className="text-[14px] text-slate-300 leading-relaxed font-semibold italic">리스크 등급에 따른 비중 조절과 분할 매수/매도 전략을 통해 하이브리드 모델이 제시하는 최적의 대응 지점을 도출합니다.</p>
+                  <p className="text-[14px] text-slate-300 leading-relaxed font-semibold italic">리스크 대비 보상 비율을 고려하여 최적의 분할 진입 및 탈출 지점을 기계적으로 도출합니다.</p>
                 </div>
                 <div>
                   <p className="text-amber-500 font-black text-[12px] uppercase tracking-widest mb-3 italic">03. 인텔리전스 (Synthesis)</p>
-                  <p className="text-[14px] text-slate-300 leading-relaxed font-semibold italic">MVRV와 온체인 수익률이 현재 시장의 장기적인 저점 혹은 고점 신호와 어떻게 결합되는지 퀀트 모델로 통합 요약합니다.</p>
+                  <p className="text-[14px] text-slate-300 leading-relaxed font-semibold italic">하이브리드 엔진이 계산한 적정 가치와 온체인 수익률을 결합하여 시장의 소음을 필터링합니다.</p>
                 </div>
               </div>
             </div>
@@ -469,19 +485,11 @@ ${historyStr}`;
               <XAxis dataKey="timestamp" type="number" domain={[new Date('2017-07-01').getTime(), 'dataMax']} hide={true} />
               <YAxis type="number" domain={[2000, 500000]} scale="log" hide={true} />
               <Tooltip content={<CustomTooltip />} cursor={{stroke: '#64748b', strokeWidth: 1}} />
-              
               {HALVING_DATES.map((hv, idx) => (
-                <ReferenceLine 
-                  key={idx} 
-                  x={new Date(hv.date).getTime()} 
-                  stroke={COLORS.halving} 
-                  strokeWidth={1} 
-                  strokeDasharray="5 5"
-                >
+                <ReferenceLine key={idx} x={new Date(hv.date).getTime()} stroke={COLORS.halving} strokeWidth={1} strokeDasharray="5 5">
                   <Label value={hv.label} position="top" fill={COLORS.halving} fontSize={10} fontWeight="900" offset={10} />
                 </ReferenceLine>
               ))}
-
               <Line name="상단 밴드" dataKey="upper" stroke={COLORS.upper} strokeWidth={1} dot={false} strokeDasharray="4 4" />
               <Line name="하단 밴드" dataKey="lower" stroke={COLORS.lower} strokeWidth={1} dot={false} strokeDasharray="4 4" />
               <Line name="적정 가치" dataKey="fair" stroke={COLORS.fair} strokeWidth={2.5} dot={false} />
@@ -516,7 +524,6 @@ ${historyStr}`;
               </table>
             </div>
           </div>
-
           <div className="bg-slate-900/40 rounded-[2.5rem] border border-white/5 overflow-hidden">
             <div className="px-8 py-5 border-b border-white/5"><h4 className="text-[12px] font-black tracking-widest text-emerald-500 uppercase italic">Growth Projection</h4></div>
             <div className="overflow-x-auto">
@@ -539,7 +546,6 @@ ${historyStr}`;
           </div>
         </div>
       </main>
-
       <footer className="pt-4 pb-16 text-center opacity-20"><p className="text-[12px] font-black uppercase tracking-[0.45em] text-slate-500 italic">Statistical Truth over Emotional Noise.</p></footer>
     </div>
   );
