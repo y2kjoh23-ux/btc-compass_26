@@ -10,6 +10,18 @@ import {
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ComposedChart, Line, ReferenceLine, Label
 } from 'recharts';
 
+// aistudio 타입 정의 - AIStudio 인터페이스를 명시적으로 정의하여 기존 환경과의 타입 충돌 해결
+interface AIStudio {
+  hasSelectedApiKey: () => Promise<boolean>;
+  openSelectKey: () => Promise<void>;
+}
+
+declare global {
+  interface Window {
+    aistudio: AIStudio;
+  }
+}
+
 const COLORS = {
   upper: '#ff2d55',
   fair: '#d97706',
@@ -101,6 +113,7 @@ const App: React.FC = () => {
   const [aiAnalysis, setAiAnalysis] = useState<AIAnalysis | null>(null);
   const [expandedDate, setExpandedDate] = useState<string | null>(null);
   const [isMounted, setIsMounted] = useState(false); 
+  const [aiError, setAiError] = useState<string | null>(null);
   
   const lastClearTimestamp = useRef<number>(0);
 
@@ -153,21 +166,32 @@ const App: React.FC = () => {
   const fetchAIAnalysis = async (historyData: Snapshot[]) => {
     if (historyData.length < 1 || isAnalyzing) return;
     setIsAnalyzing(true);
+    setAiError(null);
+    
     try {
+      // API 키 체크
+      const hasKey = await window.aistudio.hasSelectedApiKey();
+      if (!hasKey) {
+        setAiError("API_KEY_REQUIRED");
+        setIsAnalyzing(false);
+        return;
+      }
+
+      // 인스턴스 매번 생성 (최신 키 보장)
       const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-      const historyStr = historyData.slice(0, 15).map(h => 
-        `[${h.date}] Price: $${h.price.toLocaleString()}, Osc: ${h.oscillator.toFixed(2)}, F&G: ${Math.round(h.fng)}, MVRV: ${h.mvrv.toFixed(2)}`
+      const historyStr = historyData.slice(0, 10).map(h => 
+        `[${h.date}] $${h.price.toLocaleString()}, Osc: ${h.oscillator.toFixed(2)}, F&G: ${Math.round(h.fng)}, MVRV: ${h.mvrv.toFixed(2)}`
       ).join('\n');
       
-      const prompt = `비트코인 퀀트 전략가로서 다음 데이터를 정밀 진단하십시오.
-1. 'summary'에는 현재 시장의 거시적 위치, 모델 궤도 내에서의 상대적 강도, 그리고 각 국면(매집/균형/과열)에 따른 대응 원칙을 '매우 구체적이고 전문적인 논조'로 작성하세요. (최소 500자 이상의 풍부한 분석 필수)
-2. 'insights'에는 각 로그 시점별로 가격과 보조지표가 시사하는 바를 해석한 '개별 통찰'을 한글로 상세히 제공하십시오.
+      const prompt = `비트코인 퀀트 전략가로서 다음 데이터를 정밀 분석하십시오.
+1. 'summary'에는 현재 시장의 거시적 위치, 모델 궤도 이탈 여부, 향후 대응 시나리오를 '매우 구체적이고 전문적인 논조'로 최소 500자 이상 작성하세요.
+2. 'insights'에는 각 타임스탬프별 지표 변화의 의미를 한글로 상세히 기술하십시오.
 
 DATA:
 ${historyStr}`;
 
       const response = await ai.models.generateContent({
-        model: 'gemini-3-flash-preview',
+        model: 'gemini-3-pro-preview',
         contents: prompt,
         config: { 
           responseMimeType: 'application/json',
@@ -188,16 +212,29 @@ ${historyStr}`;
               }
             },
             required: ["summary", "insights"]
-          }
+          },
+          // gemini-3-pro-preview 모델의 복잡한 추론 작업을 위해 thinkingBudget을 32768로 설정
+          thinkingConfig: { thinkingBudget: 32768 }
         }
       });
       
       if (response.text) {
         setAiAnalysis(JSON.parse(response.text));
       }
-    } catch (e) { 
-      setAiAnalysis({ summary: "데이터 연산 중 지연이 발생했습니다. 모델 가격 궤도 내에서 안정적인 흐름을 유지하고 있으며, 주요 변곡점 발생 시 알림을 제공하겠습니다.", insights: [] });
+    } catch (e: any) { 
+      console.error(e);
+      if (e.message?.includes("not found") || e.message?.includes("API_KEY")) {
+        setAiError("API_KEY_INVALID");
+      } else {
+        setAiError("GENERAL_ERROR");
+      }
     } finally { setIsAnalyzing(false); }
+  };
+
+  const handleOpenApiKeyDialog = async () => {
+    await window.aistudio.openSelectKey();
+    // 키 선택 시도 후 바로 분석 재시도
+    if (history.length > 0) fetchAIAnalysis(history);
   };
 
   useEffect(() => {
@@ -287,21 +324,21 @@ ${historyStr}`;
     if (status === MarketStatus.ACCUMULATE) return { 
       text: '저평가 매집 국면', 
       desc: '통계적 저점 형성 및 매집 우위 구간', 
-      headline: '가치 하단 임계점 진입: 장기 관점의 분할 매수가 통계적으로 유리한 구간이며, 매크로 지표를 병행 확인하십시오.', 
+      headline: '가치 하단 임계점 진입: 장기 관점의 분할 매수가 통계적으로 유리한 구간입니다.', 
       color: 'text-emerald-400', 
       bg: 'bg-emerald-500/10' 
     };
     if (status === MarketStatus.SELL) return { 
       text: '고평가 과열 국면', 
       desc: '심리적 과열 및 리스크 관리 구간', 
-      headline: '가치 상단 임계점 진입: 과열된 심리에 따른 변동성 확대가 우려되므로, 원칙적인 수익 실현 및 리스크 관리가 필요합니다.', 
+      headline: '가치 상단 임계점 진입: 과열된 심리에 따른 변동성 확대가 우려됩니다.', 
       color: 'text-rose-400', 
       bg: 'bg-rose-500/10' 
     };
     return { 
       text: '가치 균형 구간', 
       desc: '중립적 추세 유지 및 관망 구간', 
-      headline: '모델 균형 가격대 안착: 적정 가치 궤도 내에서의 움직임이 예상되며, 추가 추세 확정 전까지 기존 비중을 유지하십시오.', 
+      headline: '모델 균형 가격대 안착: 적정 가치 궤도 내에서의 안정적 움직임이 예상됩니다.', 
       color: 'text-amber-400', 
       bg: 'bg-amber-500/10' 
     };
@@ -310,17 +347,12 @@ ${historyStr}`;
   const clearHistory = (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    
-    const isConfirmed = window.confirm('모든 로그 기록을 영구적으로 삭제하시겠습니까?');
-    
-    if (isConfirmed) {
+    if (window.confirm('모든 로그 기록을 삭제하시겠습니까?')) {
       lastClearTimestamp.current = Date.now();
       localStorage.removeItem('btc_compass_history');
-      localStorage.removeItem('btc_log_high_freq_start');
       setHistory([]);
       setAiAnalysis(null);
       setExpandedDate(null);
-      alert('삭제되었습니다.');
     }
   };
 
@@ -360,11 +392,32 @@ ${historyStr}`;
                 <div className="mb-8 bg-indigo-500/10 border border-indigo-500/30 rounded-3xl p-6 text-[14px] md:text-[15px] leading-relaxed italic text-indigo-100 shadow-2xl mx-1">
                   <div className="flex items-center gap-2 mb-4">
                     <span className="w-2.5 h-2.5 bg-indigo-400 rounded-full animate-ping"></span>
-                    <span className="font-black uppercase tracking-widest text-indigo-400 text-[11px]">Quant Strategy Synthesis</span>
+                    <span className="font-black uppercase tracking-widest text-indigo-400 text-[11px]">Quant Strategy Synthesis (Gemini 3 Pro)</span>
                   </div>
                   <div className="whitespace-pre-line">{aiAnalysis.summary}</div>
                 </div>
-              ) : (isAnalyzing && <div className="mb-8 animate-pulse bg-white/5 p-16 rounded-3xl text-center text-[12px] font-black uppercase tracking-widest text-slate-500 mx-1">신경망 분석 엔진 가동 중...</div>)}
+              ) : (
+                <div className="mb-8 mx-1">
+                  {isAnalyzing ? (
+                    <div className="animate-pulse bg-white/5 p-16 rounded-3xl text-center flex flex-col items-center gap-4">
+                      <div className="w-10 h-10 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin"></div>
+                      <span className="text-[12px] font-black uppercase tracking-widest text-slate-500">신경망 분석 엔진 가동 중...</span>
+                    </div>
+                  ) : aiError ? (
+                    <div className="bg-rose-500/10 border border-rose-500/30 p-10 rounded-3xl text-center space-y-4">
+                      <p className="text-rose-400 font-bold italic">
+                        {aiError === "API_KEY_REQUIRED" ? "AI 분석을 위해 API 키 선택이 필요합니다." : 
+                         aiError === "API_KEY_INVALID" ? "사용 중인 API 키가 만료되었거나 권한이 없습니다." : 
+                         "데이터 분석 중 오류가 발생했습니다. (모바일 지연)"}
+                      </p>
+                      <div className="flex flex-col md:flex-row gap-3 justify-center">
+                        <button onClick={handleOpenApiKeyDialog} className="px-6 py-3 bg-rose-500 text-white rounded-2xl font-black uppercase tracking-widest text-[11px] hover:bg-rose-600 transition-all active:scale-95">API 키 설정하기</button>
+                        <button onClick={() => fetchAIAnalysis(history)} className="px-6 py-3 bg-white/10 text-slate-300 rounded-2xl font-black uppercase tracking-widest text-[11px] hover:bg-white/20 transition-all active:scale-95">다시 시도</button>
+                      </div>
+                    </div>
+                  ) : null}
+                </div>
+              )}
               
               <div className="grid grid-cols-[1.1fr_1.8fr_1fr_0.8fr_0.8fr_0.8fr] md:grid-cols-[1.5fr_3fr_2fr_1.5fr_1fr_2fr] gap-0.5 md:gap-1 px-1 md:px-3 py-4 text-[9px] md:text-[11px] font-black uppercase text-slate-600 tracking-tighter border-b border-white/5 mb-3 sticky top-0 bg-slate-900 z-10">
                 <div className="pl-1">Date</div>
@@ -376,7 +429,7 @@ ${historyStr}`;
               </div>
 
               <div className="space-y-1 md:space-y-2 mb-10">
-                {history.length === 0 ? <div className="py-24 text-center opacity-20 text-[12px] uppercase font-black tracking-widest italic">No Data (Log Cleared)</div> : 
+                {history.length === 0 ? <div className="py-24 text-center opacity-20 text-[12px] uppercase font-black tracking-widest italic">No Data</div> : 
                   history.map((h, idx) => {
                     const hStyle = getStatusLabel(h.status);
                     const insight = aiAnalysis?.insights.find(i => i.time === h.date)?.insight;
@@ -386,35 +439,24 @@ ${historyStr}`;
 
                     const getIndicatorColor = (val: number, prevVal: number | undefined, type: 'osc' | 'fng' | 'mvrv' | 'dev') => {
                       if (prevVal === undefined) return 'text-slate-500';
-                      let currentStr, prevStr;
-                      if (type === 'fng' || type === 'dev') {
-                        currentStr = Math.round(val).toString();
-                        prevStr = Math.round(prevVal).toString();
-                      } else {
-                        currentStr = val.toFixed(2);
-                        prevStr = prevVal.toFixed(2);
-                      }
+                      let currentStr = (type === 'fng' || type === 'dev') ? Math.round(val).toString() : val.toFixed(2);
+                      let prevStr = (type === 'fng' || type === 'dev') ? Math.round(prevVal).toString() : prevVal.toFixed(2);
                       if (currentStr === prevStr) return 'text-slate-500';
-                      const cNum = parseFloat(currentStr);
-                      const pNum = parseFloat(prevStr);
-                      return cNum > pNum ? COLORS.riskUp : COLORS.riskDown;
+                      return parseFloat(currentStr) > parseFloat(prevStr) ? COLORS.riskUp : COLORS.riskDown;
                     };
-
-                    const nextDevVal = nextH ? nextH.price - nextH.fair : undefined;
 
                     return (
                       <div key={h.id} className="relative mx-1">
                         <div 
                           onClick={(e) => {
                              e.preventDefault();
-                             e.stopPropagation();
                              if (insight) setExpandedDate(isExpanded ? null : h.date);
                           }} 
                           className={`grid grid-cols-[1.1fr_1.8fr_1fr_0.8fr_0.8fr_0.8fr] md:grid-cols-[1.5fr_3fr_2fr_1.5fr_1fr_2fr] gap-0.5 md:gap-1 px-1 md:px-3 py-5 rounded-2xl text-[10px] md:text-[11px] items-center transition-all cursor-pointer select-none active:bg-white/20 touch-manipulation border border-transparent ${isExpanded ? 'bg-white/10 border-white/10 ring-1 ring-white/10 shadow-lg' : 'hover:bg-white/5'}`}
                         >
                           <div className="font-bold mono text-slate-400 whitespace-nowrap pl-0.5">{h.date}</div>
                           <div className="text-center"><span className={`px-1 py-0.5 rounded-md font-black text-[7.5px] md:text-[9px] ${hStyle.bg} ${hStyle.color} tracking-tighter uppercase whitespace-nowrap`}>{hStyle.text}</span></div>
-                          <div className="text-right mono italic" style={{ color: getIndicatorColor(devVal, nextDevVal, 'dev') }}>{devVal >= 0 ? '+' : ''}{Math.round(devVal).toLocaleString()}</div>
+                          <div className="text-right mono italic" style={{ color: getIndicatorColor(devVal, nextH ? (nextH.price - nextH.fair) : undefined, 'dev') }}>{devVal >= 0 ? '+' : ''}{Math.round(devVal).toLocaleString()}</div>
                           <div className="text-right mono" style={{ color: getIndicatorColor(h.oscillator, nextH?.oscillator, 'osc') }}>{h.oscillator.toFixed(2)}</div>
                           <div className="text-right mono" style={{ color: getIndicatorColor(h.fng, nextH?.fng, 'fng') }}>{Math.round(h.fng)}</div>
                           <div className="text-right mono pr-0.5" style={{ color: getIndicatorColor(h.mvrv, nextH?.mvrv, 'mvrv') }}>{h.mvrv.toFixed(2)}</div>
@@ -435,15 +477,15 @@ ${historyStr}`;
               </div>
             </div>
             <div className="p-5 bg-slate-950/50 border-t border-white/5 flex justify-between items-center">
-              <span className="text-[10px] font-black text-slate-600 uppercase tracking-widest italic tracking-wider">Neural Analysis Engine v14.6</span>
-              <button onClick={clearHistory} className="px-5 py-2.5 text-[10px] font-black uppercase tracking-widest text-slate-500 hover:text-rose-500 transition-all bg-white/5 hover:bg-rose-500/10 rounded-xl border border-white/5 shadow-inner active:scale-95">Clear All Logs</button>
+              <span className="text-[10px] font-black text-slate-600 uppercase tracking-widest italic tracking-wider">Neural Analysis Engine v14.7</span>
+              <button onClick={clearHistory} className="px-5 py-2.5 text-[10px] font-black uppercase tracking-widest text-slate-500 hover:text-rose-500 transition-all bg-white/5 hover:bg-rose-500/10 rounded-xl border border-white/5 shadow-inner active:scale-95">Clear Logs</button>
             </div>
           </div>
         </div>
       )}
 
       <header className="max-w-screen-2xl mx-auto px-4 py-3 flex justify-between items-center border-b border-white/5 bg-slate-950/80 backdrop-blur-md sticky top-0 z-50">
-        <h1 className="text-lg font-black text-white tracking-tighter italic uppercase flex items-baseline gap-1.5">BIT COMPASS <span className="text-amber-500">PRO</span> <span className="text-[12px] font-bold text-slate-700 tracking-widest not-italic">v14.6</span></h1>
+        <h1 className="text-lg font-black text-white tracking-tighter italic uppercase flex items-baseline gap-1.5">BIT COMPASS <span className="text-amber-500">PRO</span> <span className="text-[12px] font-bold text-slate-700 tracking-widest not-italic">v14.7</span></h1>
         <div className="flex items-center gap-2">
           <button onClick={() => setShowHistory(true)} className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-900/50 hover:bg-white/5 rounded-xl border border-white/5 transition-colors active:scale-95">
             <svg className="w-4 h-4 text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>

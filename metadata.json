@@ -1,6 +1,6 @@
 
 {
-  "name": "BIT COMPASS PRO v14.6",
-  "description": "Refined market state labels to specific phase descriptions (e.g., 'Underpriced Accumulation Phase'). Optimized mobile list layout for longer labels and enhanced AI synthesis with contextual phase analysis.",
+  "name": "BIT COMPASS PRO v14.7",
+  "description": "Resolved mobile AI analysis delays by integrating mandatory API key selection (Gemini 3 Pro). Added retry/key-config UI for mobile stability. Optimized quantitative synthesis prompts.",
   "requestFramePermissions": []
 }
