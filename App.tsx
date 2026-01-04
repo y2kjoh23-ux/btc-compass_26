@@ -113,7 +113,7 @@ const App: React.FC = () => {
 
   useEffect(() => { 
     init();
-    setTimeout(() => setIsMounted(true), 100);
+    setTimeout(() => setIsMounted(true), 150);
     const saved = localStorage.getItem('btc_compass_history');
     if (saved) {
       try {
@@ -142,7 +142,6 @@ const App: React.FC = () => {
     const m = date.getMonth() + 1;
     const d = date.getDate();
     const h = date.getHours();
-    // 26.1.4.19h -> 1.4.19h 단순화
     return `${m}.${d}.${h}h`;
   };
 
@@ -407,7 +406,6 @@ ${historyStr}`;
                         <div onClick={() => insight && setExpandedDate(isExpanded ? null : h.date)} className={`grid grid-cols-[1.5fr_3fr_2fr_1.5fr_1fr_2fr] gap-2 px-3 py-4 rounded-xl text-[10px] items-center transition-colors cursor-pointer tracking-tighter ${isExpanded ? 'bg-white/10' : 'hover:bg-white/5'}`}>
                           <div className="font-bold mono text-slate-400 whitespace-nowrap pl-1">{h.date}</div>
                           <div className="text-center"><span className={`px-2 py-0.5 rounded-md font-black text-[9px] ${hStyle.bg} ${hStyle.color} tracking-tighter uppercase whitespace-nowrap`}>{hStyle.text}</span></div>
-                          {/* DEV 스타일 수정: OSC와 동일하게 동적 색상 적용 및 볼드 제거 */}
                           <div className="text-right mono italic" style={{ color: getIndicatorColor(devVal, nextDevVal, 'dev') }}>{devVal >= 0 ? '+' : ''}{Math.round(devVal).toLocaleString()}</div>
                           <div className="text-right mono" style={{ color: getIndicatorColor(h.oscillator, nextH?.oscillator, 'osc') }}>{h.oscillator.toFixed(2)}</div>
                           <div className="text-right mono" style={{ color: getIndicatorColor(h.fng, nextH?.fng, 'fng') }}>{Math.round(h.fng)}</div>
@@ -421,7 +419,7 @@ ${historyStr}`;
               </div>
             </div>
             <div className="p-5 bg-slate-950/50 border-t border-white/5 flex justify-between items-center">
-              <span className="text-[9px] font-black text-slate-600 uppercase tracking-widest italic tracking-wider">Neural Analysis Engine v13.6</span>
+              <span className="text-[9px] font-black text-slate-600 uppercase tracking-widest italic tracking-wider">Neural Analysis Engine v13.7</span>
               <button onClick={clearHistory} className="px-4 py-2 text-[9px] font-black uppercase tracking-widest text-slate-500 hover:text-rose-500 transition-all bg-white/5 hover:bg-rose-500/10 rounded-lg border border-white/5 shadow-inner active:scale-95">Clear All Logs</button>
             </div>
           </div>
@@ -429,7 +427,7 @@ ${historyStr}`;
       )}
 
       <header className="max-w-screen-2xl mx-auto px-4 py-3 flex justify-between items-center border-b border-white/5 bg-slate-950/80 backdrop-blur-md sticky top-0 z-50">
-        <h1 className="text-lg font-black text-white tracking-tighter italic uppercase flex items-baseline gap-1.5">BIT COMPASS <span className="text-amber-500">PRO</span> <span className="text-[12px] font-bold text-slate-700 tracking-widest not-italic">v13.6</span></h1>
+        <h1 className="text-lg font-black text-white tracking-tighter italic uppercase flex items-baseline gap-1.5">BIT COMPASS <span className="text-amber-500">PRO</span> <span className="text-[12px] font-bold text-slate-700 tracking-widest not-italic">v13.7</span></h1>
         <div className="flex items-center gap-2">
           <button onClick={() => setShowHistory(true)} className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-900/50 hover:bg-white/5 rounded-xl border border-white/5 transition-colors">
             <svg className="w-4 h-4 text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>

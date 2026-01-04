@@ -1,5 +1,5 @@
 {
-  "name": "BIT COMPASS PRO v13.7",
-  "description": "Simplified log date format (m.d.hh) and enhanced DEV metric styling with dynamic color shifts matching OSC behavior.",
+  "name": "BIT COMPASS PRO v13.8 폰아이콘 문제",
+  "description": "Resolved 404 error on home screen launch by specifying index.html in manifest and finalized log styling.",
   "requestFramePermissions": []
 }
