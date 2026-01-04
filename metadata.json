@@ -1,6 +1,6 @@
 
 {
-  "name": "BIT COMPASS PRO v12.3",
-  "description": "Enforced 12H log interval, improved log clearing logic, and refined AI response reliability.",
+  "name": "BIT COMPASS PRO v12.5",
+  "description": "Custom log format YY:MMDD:HHMM, Halving vertical lines in chart, and robust 12H logging control.",
   "requestFramePermissions": []
 }

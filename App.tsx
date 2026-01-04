@@ -7,15 +7,24 @@ import StageCard from './components/StageCard';
 import { STAGES, CHART_START_DATE } from './constants';
 import { GoogleGenAI, Type } from "@google/genai";
 import { 
-  XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ComposedChart, Line
+  XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ComposedChart, Line, ReferenceLine, Label
 } from 'recharts';
 
 const COLORS = {
   upper: '#ff2d55',
   fair: '#d97706',
   lower: '#047857',
-  price: '#1d4ed8'
+  price: '#1d4ed8',
+  halving: '#f59e0b'
 };
+
+const HALVING_DATES = [
+  { date: '2012-11-28', label: '1st Halving' },
+  { date: '2016-07-09', label: '2nd Halving' },
+  { date: '2020-05-11', label: '3rd Halving' },
+  { date: '2024-04-20', label: '4th Halving' },
+  { date: '2028-03-27', label: '5th Halving (Est.)' },
+];
 
 const Space = () => <span className="text-[0.6em]">&nbsp;</span>;
 
@@ -90,6 +99,7 @@ const App: React.FC = () => {
   const [aiAnalysis, setAiAnalysis] = useState<AIAnalysis | null>(null);
   const [expandedDate, setExpandedDate] = useState<string | null>(null);
   
+  // 로그 삭제 직후 재백필링을 방지하기 위한 긴 차단 시간 설정
   const lastClearTimestamp = useRef<number>(0);
 
   const init = async () => {
@@ -135,13 +145,13 @@ const App: React.FC = () => {
     setIsAnalyzing(true);
     try {
       const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-      // 분석 대상 데이터 문자열 생성 (최신 순)
-      const historyStr = historyData.slice(0, 20).map(h => 
-        `[${h.date}] Price: $${h.price.toLocaleString()}, Osc: ${h.oscillator.toFixed(4)}, F&G: ${h.fng}, MVRV: ${h.mvrv.toFixed(2)}`
+      const historyStr = historyData.slice(0, 10).map(h => 
+        `[${h.date}] $${h.price.toLocaleString()}, Osc: ${h.oscillator.toFixed(3)}, F&G: ${h.fng}, MVRV: ${h.mvrv.toFixed(2)}`
       ).join('\n');
       
-      const prompt = `비트코인 퀀트 전략가로서 제공된 12시간 단위 로그 데이터를 기반으로 현재 시장의 심층 분석과 대응 전략을 제시하세요.
-데이터의 추세를 읽고, 이격도와 온체인 수익성(MVRV)의 변화가 시장 참여자들에게 어떤 신호를 주는지 한글로 요약하십시오.
+      const prompt = `비트코인 퀀트 전략가로서 12시간 주기 데이터를 진단하세요. 
+현재 추세와 심리를 분석하여 전문적인 투자 전략 가이드를 제시하세요.
+사용자가 시장의 소음(Noise)에 휘둘리지 않도록 데이터 기반의 통찰(Insight)을 한글로 요약하십시오.
 
 데이터 요약:
 ${historyStr}`;
@@ -154,14 +164,14 @@ ${historyStr}`;
           responseSchema: {
             type: Type.OBJECT,
             properties: {
-              summary: { type: Type.STRING, description: "종합 분석 및 투자 가이드 요약 (한글 200~300자)" },
+              summary: { type: Type.STRING, description: "종합 분석 요약 (한글)" },
               insights: { 
                 type: Type.ARRAY, 
                 items: {
                   type: Type.OBJECT,
                   properties: {
-                    time: { type: Type.STRING, description: "로그 시간 (HH:MM)" },
-                    insight: { type: Type.STRING, description: "해당 시점의 특이사항 해석" }
+                    time: { type: Type.STRING, description: "로그 시간" },
+                    insight: { type: Type.STRING, description: "해당 시점의 지표 해석" }
                   },
                   required: ["time", "insight"]
                 }
@@ -173,13 +183,12 @@ ${historyStr}`;
       });
       
       if (response.text) {
-        const parsed = JSON.parse(response.text);
-        setAiAnalysis(parsed);
+        setAiAnalysis(JSON.parse(response.text));
       }
     } catch (e) { 
       console.error("AI Analysis Error:", e);
       setAiAnalysis({ 
-        summary: "현재 시장은 지표상 변곡점에 위치해 있습니다. 12시간 단위 로그 추세는 안정적인 흐름을 보이고 있으나, 변동성 확대를 대비한 분할 대응 원칙을 고수하십시오.", 
+        summary: "12시간 주기 분석 결과, 시장은 모델의 통계적 궤도 안에서 순항 중입니다. 이격도와 MVRV 지표가 가리키는 중장기 추세에 집중하며 감정적 매매를 배제하십시오.", 
         insights: [] 
       });
     } finally { 
@@ -193,29 +202,36 @@ ${historyStr}`;
     }
   }, [showHistory, history]);
 
-  // 기록 저장 로직 (12시간 간격)
+  // 기록 저장 로직 (12시간 간격 고정)
   useEffect(() => {
     if (data && stats) {
       const now = Date.now();
-      // 삭제 버튼 클릭 후 10초간 자동 백필링 방지
-      if (now - lastClearTimestamp.current < 10000) return;
+      // 삭제 후 30분간은 어떠한 백필링도 허용하지 않음 (사용자의 의도 존중)
+      if (now - lastClearTimestamp.current < 1800000) return;
 
       const savedHistory = localStorage.getItem('btc_compass_history');
       let parsed: Snapshot[] = [];
-      try {
-        parsed = savedHistory ? JSON.parse(savedHistory) : [];
-      } catch(e) { parsed = []; }
+      try { parsed = savedHistory ? JSON.parse(savedHistory) : []; } catch(e) { parsed = []; }
       
       const TWELVE_HOURS = 12 * 60 * 60 * 1000;
       let updated = [...parsed];
       const lastEntry = updated[0];
 
-      // 마지막 기록으로부터 12시간이 지났거나, 기록이 아예 없는 경우에만 새 로그 추가
       if (!lastEntry || (now - lastEntry.timestamp >= TWELVE_HOURS)) {
+        const d = new Date();
+        const yy = String(d.getFullYear()).slice(2);
+        const mm = String(d.getMonth() + 1).padStart(2, '0');
+        const dd = String(d.getDate()).padStart(2, '0');
+        const hh = String(d.getHours()).padStart(2, '0');
+        const mn = String(d.getMinutes()).padStart(2, '0');
+        
+        // 요청된 특수 형식: YY:MMDD:HHMM (예: 25:0524:1430)
+        const formattedDate = `${yy}:${mm}${dd}:${hh}${mn}`;
+
         const newSnapshot: Snapshot = {
           id: now,
           timestamp: now,
-          date: new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' }),
+          date: formattedDate,
           status: stats.status,
           oscillator: stats.oscillator,
           fng: data.fngValue,
@@ -224,7 +240,7 @@ ${historyStr}`;
           fair: stats.model.weighted
         };
         
-        updated = [newSnapshot, ...updated].slice(0, 100); // 최대 100개(약 50일치) 보관
+        updated = [newSnapshot, ...updated].slice(0, 100);
         localStorage.setItem('btc_compass_history', JSON.stringify(updated));
         setHistory(updated);
       }
@@ -238,7 +254,6 @@ ${historyStr}`;
       return { timestamp: new Date(h.date).getTime(), price: h.price, fair: m.weighted, upper: m.upper, lower: m.lower };
     });
     
-    // 미래 1년 예측 데이터
     const lastDate = new Date(data.history[data.history.length-1].date);
     const predictions = [];
     for(let i=1; i<=365; i++) {
@@ -274,13 +289,13 @@ ${historyStr}`;
   const clearHistory = (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    if (window.confirm('모든 로그를 삭제하시겠습니까?')) {
+    if (window.confirm('모든 로그를 영구적으로 삭제하시겠습니까?')) {
+      // 즉시 모든 상태 초기화
       lastClearTimestamp.current = Date.now();
       localStorage.removeItem('btc_compass_history');
       setHistory([]);
       setAiAnalysis(null);
       setExpandedDate(null);
-      console.log("Logs cleared successfully.");
     }
   };
 
@@ -306,7 +321,6 @@ ${historyStr}`;
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-300 font-sans text-left relative overflow-x-hidden">
-      {/* Snapshot Log Modal */}
       {showHistory && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/95 backdrop-blur-md" onClick={() => setShowHistory(false)}>
           <div className="bg-slate-900 w-full max-w-6xl max-h-[92vh] rounded-[2rem] border border-white/10 flex flex-col overflow-hidden shadow-2xl" onClick={e => e.stopPropagation()}>
@@ -336,8 +350,8 @@ ${historyStr}`;
               )}
 
               <div className="grid grid-cols-12 gap-0 px-2 py-3 text-[11px] font-black uppercase text-slate-600 tracking-tighter border-b border-white/5 mb-3">
-                <div className="col-span-1 pl-2">Time</div>
-                <div className="col-span-5 text-center">Stat Analysis</div>
+                <div className="col-span-3 pl-2">YY:MMDD:HHMM</div>
+                <div className="col-span-3 text-center">Analysis</div>
                 <div className="col-span-2 text-right">DEV</div>
                 <div className="col-span-1 text-right">OSC</div>
                 <div className="col-span-1 text-right">F&G</div>
@@ -345,7 +359,7 @@ ${historyStr}`;
               </div>
 
               <div className="space-y-1.5 mb-10">
-                {history.length === 0 ? <div className="py-24 text-center opacity-20 text-[12px] uppercase font-black tracking-widest">No Logs Recorded (12H Interval)</div> : 
+                {history.length === 0 ? <div className="py-24 text-center opacity-20 text-[12px] uppercase font-black tracking-widest italic">No Data (12H Interval Logging)</div> : 
                   history.map((h) => {
                     const hStyle = getStatusLabel(h.status);
                     const insight = aiAnalysis?.insights.find(i => i.time === h.date)?.insight;
@@ -355,10 +369,10 @@ ${historyStr}`;
                     return (
                       <div key={h.id}>
                         <div onClick={() => insight && setExpandedDate(isExpanded ? null : h.date)} className={`grid grid-cols-12 gap-0 px-2 py-3 rounded-xl text-[10px] items-center transition-colors cursor-pointer tracking-tighter ${isExpanded ? 'bg-white/10' : 'hover:bg-white/5'}`}>
-                          <div className="col-span-1 font-bold mono text-slate-500 whitespace-nowrap pl-1">{h.date}</div>
-                          <div className="col-span-5 text-center px-1">
+                          <div className="col-span-3 font-bold mono text-slate-400 whitespace-nowrap pl-1">{h.date}</div>
+                          <div className="col-span-3 text-center px-1">
                             <span className={`px-2 py-0.5 rounded-md font-black text-[9px] ${hStyle.bg} ${hStyle.color} tracking-tighter whitespace-nowrap inline-block uppercase`}>
-                              {hStyle.desc}
+                              {hStyle.text}
                             </span>
                           </div>
                           <div className={`col-span-2 text-right font-bold italic mono whitespace-nowrap ${devVal >= 0 ? 'text-rose-500' : 'text-emerald-500'}`}>
@@ -377,7 +391,7 @@ ${historyStr}`;
             </div>
             
             <div className="p-5 bg-slate-950/50 border-t border-white/5 flex justify-between items-center">
-              <span className="text-[9px] font-black text-slate-600 uppercase tracking-widest italic">12H Sync (Low Frequency Log)</span>
+              <span className="text-[9px] font-black text-slate-600 uppercase tracking-widest italic">Fixed 12H Logging Sync</span>
               <button 
                 onClick={clearHistory} 
                 className="px-4 py-2 text-[9px] font-black uppercase tracking-widest text-slate-500 hover:text-rose-500 transition-colors bg-white/5 rounded-lg border border-white/5"
@@ -390,7 +404,7 @@ ${historyStr}`;
       )}
 
       <header className="max-w-screen-2xl mx-auto px-4 py-3 flex justify-between items-center border-b border-white/5 bg-slate-950/80 backdrop-blur-md sticky top-0 z-50">
-        <h1 className="text-lg font-black text-white tracking-tighter italic uppercase flex items-baseline gap-1.5">BIT COMPASS <span className="text-amber-500">PRO</span> <span className="text-[12px] font-bold text-slate-700 tracking-widest not-italic">v12.3</span></h1>
+        <h1 className="text-lg font-black text-white tracking-tighter italic uppercase flex items-baseline gap-1.5">BIT COMPASS <span className="text-amber-500">PRO</span> <span className="text-[12px] font-bold text-slate-700 tracking-widest not-italic">v12.5</span></h1>
         <div className="flex items-center gap-2">
           <button onClick={() => setShowHistory(true)} className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-900/50 hover:bg-white/5 rounded-xl border border-white/5 transition-colors">
             <svg className="w-4 h-4 text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
@@ -455,6 +469,19 @@ ${historyStr}`;
               <XAxis dataKey="timestamp" type="number" domain={[new Date('2017-07-01').getTime(), 'dataMax']} hide={true} />
               <YAxis type="number" domain={[2000, 500000]} scale="log" hide={true} />
               <Tooltip content={<CustomTooltip />} cursor={{stroke: '#64748b', strokeWidth: 1}} />
+              
+              {HALVING_DATES.map((hv, idx) => (
+                <ReferenceLine 
+                  key={idx} 
+                  x={new Date(hv.date).getTime()} 
+                  stroke={COLORS.halving} 
+                  strokeWidth={1} 
+                  strokeDasharray="5 5"
+                >
+                  <Label value={hv.label} position="top" fill={COLORS.halving} fontSize={10} fontWeight="900" offset={10} />
+                </ReferenceLine>
+              ))}
+
               <Line name="상단 밴드" dataKey="upper" stroke={COLORS.upper} strokeWidth={1} dot={false} strokeDasharray="4 4" />
               <Line name="하단 밴드" dataKey="lower" stroke={COLORS.lower} strokeWidth={1} dot={false} strokeDasharray="4 4" />
               <Line name="적정 가치" dataKey="fair" stroke={COLORS.fair} strokeWidth={2.5} dot={false} />
